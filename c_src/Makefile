@@ -253,9 +253,12 @@ $(C_SRC_ENV):
 			code:lib_dir(erl_interface, lib)])), \
 		halt()."
 
-distclean:: distclean-c_src-env
+distclean:: distclean-env distclean-deps
 
-distclean-c_src-env:
-	$(gen_verbose) rm -rf $(C_SRC_ENV) $(H2O_DIR) $(WSLAY_DIR)
+distclean-env:
+	$(gen_verbose) rm -f $(C_SRC_ENV)
+
+distclean-deps:
+	$(gen_verbose) rm -rf $(H2O_DIR) $(WSLAY_DIR)
 
 -include $(C_SRC_ENV)
