@@ -9,16 +9,24 @@
 %%% Created :  16 Feb 2017 by Andrew Bennett <andrew@pixid.com>
 %%%-------------------------------------------------------------------
 
--ifndef(H2O_HRL).
--define(H2O_HRL, 1).
+-ifndef(H2O_DRV_HRL).
+-define(H2O_DRV_HRL, 1).
 
--define(H2O_DRIVER_ATOM, 'h2o_drv').
--define(H2O_DRIVER_NAME, "h2o_drv").
-
--define(H2O_ASYNC_CALL, 1).
+-define(H2O_DRV_ATOM, 'h2o_drv').
+-define(H2O_DRV_NAME, "h2o_drv").
 
 -define(H2O_DRV_REP_ERROR,	0).
 -define(H2O_DRV_REP_OK,		1).
 -define(H2O_DRV_REP,		2).
+-define(H2O_DRV_REP_TERM,	131).
+
+% port_control requests
+-define(H2O_DRV_REQ_CLIENT,		1).
+-define(H2O_DRV_REQ_SERVER,		2).
+-define(H2O_DRV_REQ_CLOSE,		3).
+-define(H2O_DRV_REQ_SETOPTS,	4).
+-define(H2O_DRV_REQ_GETOPTS,	5).
+-define(H2O_DRV_REQ_SETCFG,		6).
+-define(H2O_DRV_REQ_GETCFG,		7).
 
 -endif.

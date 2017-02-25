@@ -6,30 +6,38 @@
 %%% @doc
 %%%
 %%% @end
-%%% Created :  16 Feb 2017 by Andrew Bennett <andrew@pixid.com>
+%%% Created :  24 Feb 2017 by Andrew Bennett <andrew@pixid.com>
 %%%-------------------------------------------------------------------
 -module(h2o).
 
--include("h2o.hrl").
+-export([server_open/0]).
+-export([server_getcfg/1]).
+-export([server_setcfg/2]).
+-export([server_getstatus/1]).
+-export([server_start/1]).
+-export([request_reply/1]).
 
-%% API
--export([start/0]).
+server_open() ->
+	h2o_nif:server_open().
 
-% -define(MAYBE_START_H2O(F), try
-% 	F
-% catch
-% 	_:_ ->
-% 		_ = h2o:start(),
-% 		F
-% end).
+server_getcfg(Server) ->
+	h2o_nif:server_getcfg(Server).
 
-%%%===================================================================
-%%% API
-%%%===================================================================
+server_setcfg(Server, Config) ->
+	h2o_nif:server_setcfg(Server, h2o_yaml:encode(Config)).
 
-start() ->
-	application:ensure_all_started(?MODULE).
+server_getstatus(Server) ->
+	h2o_nif:server_getstatus(Server).
 
-%%%-------------------------------------------------------------------
-%%% Internal functions
-%%%-------------------------------------------------------------------
+server_start(Server) ->
+	h2o_nif:server_start(Server).
+
+request_reply(Tag) ->
+	receive
+		{h2o_request, Tag, Request} ->
+			io:format("got request~n"),
+			h2o_nif:request_reply(Request)
+	end.
+
+% request_reply(Request) ->
+% 	h2o_nif:request_reply(Request).

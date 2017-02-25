@@ -37,7 +37,6 @@ start_link() ->
 %% @private
 init([]) ->
 	ChildSpecs = [
-		?CHILD(h2o_driver, worker)
 	],
 	Restart = {one_for_one, 10, 10},
 	{ok, {Restart, ChildSpecs}}.

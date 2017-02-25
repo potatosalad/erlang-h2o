@@ -9,7 +9,7 @@ PROJECT = h2o
 
 C_SRC_DIR ?= $(CURDIR)
 C_SRC_ENV ?= $(C_SRC_DIR)/env.mk
-C_SRC_OUTPUT ?= $(BASEDIR)/priv/$(PROJECT)_drv
+C_SRC_OUTPUT ?= $(BASEDIR)/priv/$(PROJECT)_nif
 C_SRC_TYPE ?= shared
 
 # "erl" command.
@@ -93,15 +93,18 @@ ifneq ($(PLATFORM),msys2)
 endif
 
 CFLAGS += -I"$(ERTS_INCLUDE_DIR)" -I"$(ERL_INTERFACE_INCLUDE_DIR)" \
-	-DH2O_USE_LIBUV=0 -I"$(H2O_INCLUDE_DIR)" -I"$(LIBRESSL_INCLUDE_DIR)" -I"$(WSLAY_INCLUDE_DIR)"
+	-DH2O_USE_LIBUV=0 -I"$(H2O_INCLUDE_DIR)" -I"$(LIBRESSL_INCLUDE_DIR)" -I"$(WSLAY_INCLUDE_DIR)" \
+	-I"$(YAML_INCLUDE_DIR)" -I"$(YOML_INCLUDE_DIR)"
 CXXFLAGS += -I"$(ERTS_INCLUDE_DIR)" -I"$(ERL_INTERFACE_INCLUDE_DIR)" \
-	-DH2O_USE_LIBUV=0 -I"$(H2O_INCLUDE_DIR)" -I"$(LIBRESSL_INCLUDE_DIR)" -I"$(WSLAY_INCLUDE_DIR)"
+	-DH2O_USE_LIBUV=0 -I"$(H2O_INCLUDE_DIR)" -I"$(LIBRESSL_INCLUDE_DIR)" -I"$(WSLAY_INCLUDE_DIR)" \
+	-I"$(YAML_INCLUDE_DIR)" -I"$(YOML_INCLUDE_DIR)"
 
 # LDLIBS += -L"$(ERL_INTERFACE_LIB_DIR)" -lerl_interface -lei -lz "$(WSLAY_OUTPUT_FILE)" "$(H2O_OUTPUT_FILE)"
 LDLIBS += -L"$(ERL_INTERFACE_LIB_DIR)" -lerl_interface -lei -lz \
 	-L"$(H2O_LIB_DIR)" -lh2o-evloop \
 	-L"$(LIBRESSL_LIB_DIR)" -lssl -lcrypto \
-	-L"$(WSLAY_LIB_DIR)" -lwslay
+	-L"$(WSLAY_LIB_DIR)" -lwslay \
+	-L"$(YAML_LIB_DIR)" -lyaml
 
 # Dependencies.
 
@@ -123,6 +126,14 @@ WSLAY_LIB_DIR ?= $(WSLAY_DIR)/lib
 WSLAY_INCLUDE_DIR ?= $(WSLAY_LIB_DIR)/includes
 WSLAY_OUTPUT_FILE ?= $(WSLAY_LIB_DIR)/libwslay.a
 WSLAY_MAKE_FILE ?= $(WSLAY_DIR)/Makefile
+
+YAML_DIR ?= $(H2O_DIR)/deps/yaml
+YAML_LIB_DIR ?= $(YAML_DIR)
+YAML_INCLUDE_DIR ?= $(YAML_DIR)/include
+YAML_OUTPUT_FILE ?= $(YAML_LIB_DIR)/libyaml.a
+YAML_MAKE_FILE ?= $(YAML_DIR)/Makefile
+
+YOML_INCLUDE_DIR ?= $(H2O_DIR)/deps/yoml
 
 # Verbosity.
 
@@ -177,7 +188,7 @@ deps::
 
 else
 
-deps:: $(WSLAY_OUTPUT_FILE) $(H2O_OUTPUT_FILE)
+deps:: $(WSLAY_OUTPUT_FILE) $(H2O_OUTPUT_FILE) $(YAML_OUTPUT_FILE)
 
 endif
 
@@ -218,6 +229,16 @@ $(WSLAY_MAKE_FILE): $(WSLAY_DIR)
 
 $(WSLAY_OUTPUT_FILE): $(WSLAY_MAKE_FILE)
 	$(MAKE) -C $(WSLAY_DIR)
+
+$(YAML_MAKE_FILE): $(H2O_DIR)
+	$(verbose) if [ ! -f $(YAML_MAKE_FILE) ]; then \
+		(cd $(YAML_DIR) && cmake .); \
+	else \
+		true; \
+	fi
+
+$(YAML_OUTPUT_FILE): $(YAML_MAKE_FILE)
+	$(MAKE) -C $(YAML_DIR)
 
 $(C_SRC_OUTPUT_FILE): $(OBJECTS)
 	$(verbose) mkdir -p $(BASEDIR)/priv/
