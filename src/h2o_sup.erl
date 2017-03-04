@@ -36,7 +36,9 @@ start_link() ->
 
 %% @private
 init([]) ->
+	h2o_kernel = ets:new(h2o_kernel, [ordered_set, public, named_table]),
 	ChildSpecs = [
+		?CHILD(h2o_kernel, worker)
 	],
 	Restart = {one_for_one, 10, 10},
 	{ok, {Restart, ChildSpecs}}.

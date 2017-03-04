@@ -47,9 +47,19 @@
 -define(ESCAPE_BIN(B),
 	<< ?ESCAPE_CHAR(C) || << C >> <= B >>).
 
+%%%===================================================================
+%%% Public API
+%%%===================================================================
+
+-spec encode(any()) -> iodata().
 encode(Term) ->
 	[encode_term(Term, 0, "---\n"), "\n"].
 
+%%%-------------------------------------------------------------------
+%%% Internal functions
+%%%-------------------------------------------------------------------
+
+%% @private
 encode_term(Dict=[{_, _} | _], Level, Acc) ->
 	encode_dict(Dict, Level, Acc);
 encode_term(List, Level, Acc) when is_list(List) ->
@@ -59,6 +69,7 @@ encode_term(Map, Level, Acc) when is_map(Map) ->
 encode_term(Scalar, Level, Acc) when ?is_scalar(Scalar) ->
 	encode_scalar(Scalar, Level, Acc).
 
+%% @private
 encode_dict(Dict, Level, Acc) ->
 	Indent = indent(Level),
 	[Acc | [begin
@@ -74,6 +85,7 @@ encode_dict(Dict, Level, Acc) ->
 		end
 	end || {K, V} <- Dict, ?is_scalar(K)]].
 
+%% @private
 encode_list([], Level, Acc) ->
 	Indent = indent(Level),
 	[Acc, "\n", Indent, "[]"];
@@ -89,6 +101,7 @@ encode_list(List, Level, Acc) ->
 		encode_term(Element, Lvl, ["\n", Indent, Sep])
 	end || Element <- List]].
 
+%% @private
 encode_map(Map, Level, Acc) ->
 	Indent = indent(Level),
 	Folder = fun
@@ -103,6 +116,7 @@ encode_map(Map, Level, Acc) ->
 	end,
 	maps:fold(Folder, Acc, Map).
 
+%% @private
 encode_scalar(Binary, Level, Acc) when is_binary(Binary) ->
 	[Acc, indent(Level), $", ?ESCAPE_BIN(Binary), $"];
 encode_scalar(Boolean, Level, Acc) when is_boolean(Boolean) ->
@@ -114,7 +128,8 @@ encode_scalar(Integer, Level, Acc) when is_integer(Integer) ->
 encode_scalar(nil, Level, Acc) ->
 	[Acc, indent(Level), "!!null"];
 encode_scalar(Reference, Level, Acc) when is_reference(Reference) ->
-	[Acc, indent(Level), "!!binary ", $", base64url:encode(erlang:term_to_binary(Reference)), $"].
+	[Acc, indent(Level), "!!binary ", $", h2o_nif:string_base64_encode(erlang:term_to_binary(Reference), true), $"].
 
+%% @private
 indent(Level) ->
 	binary:copy(<<"  ">>, Level).

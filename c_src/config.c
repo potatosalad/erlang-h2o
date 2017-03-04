@@ -51,6 +51,7 @@
 /* config commands */
 static yoml_t *load_config(yoml_parse_args_t *parse_args, yaml_char_t *input, size_t size);
 static int on_config_erlang_handler(h2o_configurator_command_t *cmd, h2o_configurator_context_t *ctx, yoml_t *node);
+static int on_config_erlang_handler_websocket(h2o_configurator_command_t *cmd, h2o_configurator_context_t *ctx, yoml_t *node);
 static int on_config_error_log(h2o_configurator_command_t *cmd, h2o_configurator_context_t *ctx, yoml_t *node);
 static int on_config_listen(h2o_configurator_command_t *cmd, h2o_configurator_context_t *ctx, yoml_t *node);
 static int on_config_listen_enter(h2o_configurator_t *configurator, h2o_configurator_context_t *ctx, yoml_t *node);
@@ -117,13 +118,28 @@ h2o_nif_config_init(h2o_nif_config_t *config)
     (void)h2o_access_log_register_configurator(&config->globalconf);
     (void)h2o_compress_register_configurator(&config->globalconf);
     (void)h2o_file_register_configurator(&config->globalconf);
+    (void)h2o_status_register_configurator(&config->globalconf);
     {
         h2o_configurator_t *c = h2o_configurator_create(&config->globalconf, sizeof(*c));
-        (void)h2o_configurator_define_command(c, "erlang.handler", H2O_CONFIGURATOR_FLAG_PATH | H2O_CONFIGURATOR_FLAG_DEFERRED |
-                                                                       H2O_CONFIGURATOR_FLAG_EXPECT_SCALAR,
-                                              on_config_erlang_handler);
+        (void)h2o_configurator_define_command(
+            c, "erlang.handler", H2O_CONFIGURATOR_FLAG_PATH | H2O_CONFIGURATOR_FLAG_DEFERRED | H2O_CONFIGURATOR_FLAG_EXPECT_SCALAR,
+            on_config_erlang_handler);
+        (void)h2o_configurator_define_command(c, "erlang.handler.websocket",
+                                              H2O_CONFIGURATOR_FLAG_PATH | H2O_CONFIGURATOR_FLAG_DEFERRED |
+                                                  H2O_CONFIGURATOR_FLAG_EXPECT_SCALAR,
+                                              on_config_erlang_handler_websocket);
     }
+    (void)h2o_config_register_simple_status_handler(&config->globalconf, (h2o_iovec_t){H2O_STRLIT("main")},
+                                                    h2o_nif_server_on_extra_status);
     return 1;
+}
+
+void
+h2o_nif_config_dispose(h2o_nif_config_t *config)
+{
+    (void)h2o_config_dispose(&config->globalconf);
+    (void)memset(config, 0, sizeof(*config));
+    return;
 }
 
 ERL_NIF_TERM
@@ -198,7 +214,7 @@ ERL_NIF_TERM
 h2o_nif_config_set(ErlNifEnv *env, h2o_nif_config_t *config, ErlNifBinary *input)
 {
     h2o_nif_server_t *server = (h2o_nif_server_t *)config;
-    if (server->status != H2O_NIF_SRV_S_OPEN && server->status != H2O_NIF_SRV_S_IDLE) {
+    if (H2O_NIF_PORT_IS_STARTED(server->port)) {
         return enif_make_badarg(env);
     }
     yoml_t *yoml;
@@ -220,7 +236,7 @@ h2o_nif_config_set(ErlNifEnv *env, h2o_nif_config_t *config, ErlNifBinary *input
     }
     (void)yoml_free(yoml, NULL);
     config->env = NULL;
-    server->status = H2O_NIF_SRV_S_IDLE;
+    server->port->state |= H2O_NIF_PORT_STATE_CONFIGURED;
     return enif_make_atom(env, "ok");
 }
 
@@ -273,7 +289,7 @@ on_config_erlang_handler(h2o_configurator_command_t *cmd, h2o_configurator_conte
         (void)free(ref_iovec.base);
         return -1;
     }
-    (void)h2o_nif_handler_register(config->env, ctx->pathconf, ref_term);
+    (void)h2o_nif_handler_register(config->env, ctx->pathconf, ref_term, H2O_NIF_HDL_TYPE_NONBLOCK);
     (void)free(ref_iovec.base);
 
     // switch (node->type) {
@@ -309,6 +325,40 @@ on_config_erlang_handler(h2o_configurator_command_t *cmd, h2o_configurator_conte
     //      TRACE_F("type=YOML__TYPE_UNRESOLVED_ALIAS\n");
     //      break;
     // }
+
+    return 0;
+}
+
+static int
+on_config_erlang_handler_websocket(h2o_configurator_command_t *cmd, h2o_configurator_context_t *ctx, yoml_t *node)
+{
+    TRACE_F("on_config_erlang_handler_websocket:%s:%d\n", __FILE__, __LINE__);
+
+    if (node->type != YOML_TYPE_SCALAR) {
+        (void)h2o_configurator_errprintf(cmd, node, "`erlang.handler.websocket` is not a scalar");
+        return -1;
+    }
+
+    h2o_iovec_t ref_iovec;
+    ref_iovec = h2o_decode_base64url(NULL, node->data.scalar, strlen(node->data.scalar));
+    if (ref_iovec.base == NULL) {
+        (void)h2o_configurator_errprintf(cmd, node, "`erlang.handler.websocket` invalid Base64 encoding");
+        return -1;
+    }
+    h2o_nif_config_t *config = (h2o_nif_config_t *)ctx->globalconf;
+    ERL_NIF_TERM ref_term;
+    if (!enif_binary_to_term(config->env, (const unsigned char *)ref_iovec.base, ref_iovec.len, &ref_term, ERL_NIF_BIN2TERM_SAFE)) {
+        (void)h2o_configurator_errprintf(cmd, node, "`erlang.handler.websocket` must be an erlang reference");
+        (void)free(ref_iovec.base);
+        return -1;
+    }
+    if (!enif_is_ref(config->env, ref_term)) {
+        (void)h2o_configurator_errprintf(cmd, node, "`erlang.handler.websocket` must be an erlang reference");
+        (void)free(ref_iovec.base);
+        return -1;
+    }
+    (void)h2o_nif_handler_register(config->env, ctx->pathconf, ref_term, H2O_NIF_HDL_TYPE_WEBSOCKET);
+    (void)free(ref_iovec.base);
 
     return 0;
 }

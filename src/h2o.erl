@@ -10,34 +10,65 @@
 %%%-------------------------------------------------------------------
 -module(h2o).
 
--export([server_open/0]).
--export([server_getcfg/1]).
--export([server_setcfg/2]).
--export([server_getstatus/1]).
--export([server_start/1]).
--export([request_reply/1]).
+-export([start/0]).
+% -export([server_open/0]).
+% -export([server_getcfg/1]).
+% -export([server_setcfg/2]).
+% -export([server_getstatus/1]).
+% -export([server_start/1]).
+% -export([handler_accept/1]).
+% -export([handler_accept/2]).
+% -export([request_reply/1]).
+% -export([get_handler/1]).
 
-server_open() ->
-	h2o_nif:server_open().
+start() ->
+	application:ensure_all_started(?MODULE).
 
-server_getcfg(Server) ->
-	h2o_nif:server_getcfg(Server).
+% server_open() ->
+% 	h2o_nif:server_open().
 
-server_setcfg(Server, Config) ->
-	h2o_nif:server_setcfg(Server, h2o_yaml:encode(Config)).
+% server_getcfg(Server) ->
+% 	h2o_nif:server_getcfg(Server).
 
-server_getstatus(Server) ->
-	h2o_nif:server_getstatus(Server).
+% server_setcfg(Server, Config) ->
+% 	h2o_nif:server_setcfg(Server, h2o_yaml:encode(Config)).
 
-server_start(Server) ->
-	h2o_nif:server_start(Server).
+% server_getstatus(Server) ->
+% 	h2o_nif:server_getstatus(Server).
 
-request_reply(Tag) ->
-	receive
-		{h2o_request, Tag, Request} ->
-			io:format("got request~n"),
-			h2o_nif:request_reply(Request)
-	end.
+% server_start(Server) ->
+% 	h2o_nif:server_start(Server).
 
-% request_reply(Request) ->
-% 	h2o_nif:request_reply(Request).
+% handler_accept(Handler) ->
+% 	handler_accept(Handler, infinity).
+
+% handler_accept(Handler, Timeout) ->
+% 	case h2o_nif:handler_accept(Handler, Timeout) of
+% 		{AsyncID} ->
+% 			io:format("async request~n"),
+% 			receive
+% 				{AsyncID, Request} ->
+% 					{ok, Request}
+% 			end;
+% 		Request ->
+% 			io:format("sync request~n"),
+% 			{ok, Request}
+% 	end.
+
+% request_reply(Tag) ->
+% 	receive
+% 		{h2o_request, Tag, Request} ->
+% 			io:format("got request~n"),
+% 			h2o_nif:request_reply(Request)
+% 	end.
+
+% get_handler(Tag) ->
+% 	receive
+% 		{h2o_handler, Tag, Handler} ->
+% 			{ok, Handler}
+% 	end.
+
+% receive_handlers(Server, Acc) ->
+% 	receive
+% 		{h2o_handler, Server, Handler} ->
+% 			receive_handlers(Server, [{}])

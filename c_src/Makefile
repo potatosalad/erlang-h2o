@@ -93,11 +93,21 @@ ifneq ($(PLATFORM),msys2)
 endif
 
 CFLAGS += -I"$(ERTS_INCLUDE_DIR)" -I"$(ERL_INTERFACE_INCLUDE_DIR)" \
-	-DH2O_USE_LIBUV=0 -I"$(H2O_INCLUDE_DIR)" -I"$(LIBRESSL_INCLUDE_DIR)" -I"$(WSLAY_INCLUDE_DIR)" \
-	-I"$(YAML_INCLUDE_DIR)" -I"$(YOML_INCLUDE_DIR)"
+	-DH2O_USE_LIBUV=0 \
+	-I"$(H2O_INCLUDE_DIR)" \
+	-I"$(KLIB_INCLUDE_DIR)" \
+	-I"$(LIBRESSL_INCLUDE_DIR)" \
+	-I"$(WSLAY_INCLUDE_DIR)" \
+	-I"$(YAML_INCLUDE_DIR)" \
+	-I"$(YOML_INCLUDE_DIR)"
 CXXFLAGS += -I"$(ERTS_INCLUDE_DIR)" -I"$(ERL_INTERFACE_INCLUDE_DIR)" \
-	-DH2O_USE_LIBUV=0 -I"$(H2O_INCLUDE_DIR)" -I"$(LIBRESSL_INCLUDE_DIR)" -I"$(WSLAY_INCLUDE_DIR)" \
-	-I"$(YAML_INCLUDE_DIR)" -I"$(YOML_INCLUDE_DIR)"
+	-DH2O_USE_LIBUV=0 \
+	-I"$(H2O_INCLUDE_DIR)" \
+	-I"$(KLIB_INCLUDE_DIR)" \
+	-I"$(LIBRESSL_INCLUDE_DIR)" \
+	-I"$(WSLAY_INCLUDE_DIR)" \
+	-I"$(YAML_INCLUDE_DIR)" \
+	-I"$(YOML_INCLUDE_DIR)"
 
 # LDLIBS += -L"$(ERL_INTERFACE_LIB_DIR)" -lerl_interface -lei -lz "$(WSLAY_OUTPUT_FILE)" "$(H2O_OUTPUT_FILE)"
 LDLIBS += -L"$(ERL_INTERFACE_LIB_DIR)" -lerl_interface -lei -lz \
@@ -108,13 +118,15 @@ LDLIBS += -L"$(ERL_INTERFACE_LIB_DIR)" -lerl_interface -lei -lz \
 
 # Dependencies.
 
-H2O_VSN ?= v2.1.x-20170216
+H2O_VSN ?= v2.2.0-beta1-20170228
 H2O_DIR ?= $(BASEDIR)/.h2o
 H2O_GIT ?= git://github.com/potatosalad/h2o.git
 H2O_OUTPUT_FILE ?= $(H2O_DIR)/libh2o-evloop.a
 H2O_LIB_DIR ?= $(H2O_DIR)
 H2O_INCLUDE_DIR ?= $(H2O_DIR)/include
 H2O_MAKE_FILE ?= $(H2O_DIR)/Makefile
+
+KLIB_INCLUDE_DIR ?= $(H2O_DIR)/deps/klib
 
 LIBRESSL_LIB_DIR ?= $(H2O_DIR)/libressl-build/lib
 LIBRESSL_INCLUDE_DIR ?= $(H2O_DIR)/libressl-build/include
@@ -134,6 +146,8 @@ YAML_OUTPUT_FILE ?= $(YAML_LIB_DIR)/libyaml.a
 YAML_MAKE_FILE ?= $(YAML_DIR)/Makefile
 
 YOML_INCLUDE_DIR ?= $(H2O_DIR)/deps/yoml
+
+ALL_DEPS_OUTPUT ?= $(H2O_OUTPUT_FILE) $(WSLAY_OUTPUT_FILE) $(YAML_OUTPUT_FILE)
 
 # Verbosity.
 
@@ -182,7 +196,7 @@ all:: deps app
 
 app:: $(C_SRC_ENV) $(C_SRC_OUTPUT_FILE)
 
-ifneq ($(wildcard $(H2O_OUTPUT_FILE)),)
+ifeq ($(filter $(foreach p,$(ALL_DEPS_OUTPUT),$(if $(wildcard $(p)),,x)), x),)
 
 deps::
 
@@ -204,7 +218,14 @@ $(H2O_DIR):
 
 $(H2O_MAKE_FILE): $(H2O_DIR)
 	$(verbose) if [ ! -f $(H2O_MAKE_FILE) ]; then \
-		(cd $(H2O_DIR) && cmake -DWSLAY_LIBRARIES="$(WSLAY_LIB_DIR)" -DWSLAY_INCLUDE_DIR="$(WSLAY_INCLUDE_DIR)" -DWITH_BUNDLED_SSL_FOR_LIBH2O=on .); \
+		(cd $(H2O_DIR) \
+			&& cmake \
+			-DWSLAY_LIBRARIES="$(WSLAY_LIB_DIR)" \
+			-DWSLAY_INCLUDE_DIR="$(WSLAY_INCLUDE_DIR)" \
+			-DWITH_BUNDLED_SSL_FOR_LIBH2O=on \
+			-DWITH_MRUBY=off \
+			-DWITH_PICOTLS=on \
+			.); \
 	else \
 		true; \
 	fi
@@ -281,5 +302,8 @@ distclean-env:
 
 distclean-deps:
 	$(gen_verbose) rm -rf $(H2O_DIR) $(WSLAY_DIR)
+
+clang-format-all:
+	$(gen_verbose) clang-format -i *.c *.h h2o_nif/*.c.h
 
 -include $(C_SRC_ENV)
