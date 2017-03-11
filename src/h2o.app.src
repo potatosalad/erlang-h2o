@@ -8,7 +8,8 @@
 	{registered, []},
 	{applications, [
 		kernel,
-		stdlib
+		stdlib,
+		ranch
 	]},
 	{modules, []},
 	{maintainers, ["Andrew Bennett"]},

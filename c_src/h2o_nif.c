@@ -7,10 +7,7 @@
 #include "handler.h"
 #include "request.h"
 #include "slice.h"
-
-#define H2O_DEFAULT_NUM_NAME_RESOLUTION_THREADS 32
-
-#define H2O_DEFAULT_OCSP_UPDATER_MAX_THREADS 10
+// #include "lockfree/aba.h"
 
 /*
  * Erlang NIF functions
@@ -26,8 +23,40 @@
 // }
 
 #include "h2o_nif/port.c.h"
+#include "h2o_nif/request.c.h"
 #include "h2o_nif/server.c.h"
 #include "h2o_nif/string.c.h"
+
+// static ERL_NIF_TERM
+// h2o_nif_port_lookup_1(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+// {
+//     if (argc != 1) {
+//         return enif_make_badarg(env);
+//     }
+//     if (enif_is_number(env, argv[0])) {
+//         h2o_nif_port_t *port = NULL;
+//         int port_id = 0;
+//         khiter_t iter;
+//         // (void)enif_rwlock_rlock(h2o_nif_rwlock);
+//         iter = kh_get(h2o_nif_port_t, h2o_nif_ports, port_id);
+//         if (iter == kh_end(h2o_nif_ports)) {
+//             (void)enif_rwlock_runlock(h2o_nif_rwlock);
+//             return 0;
+//         }
+//         port = kh_val(h2o_nif_ports, iter);
+//         if (port->closed) {
+//             port = NULL;
+//         }
+//         // (void)enif_rwlock_runlock(h2o_nif_rwlock);
+//         return (port) ? ATOM_true : ATOM_false;
+//     } else {
+//         h2o_nif_data_t *priv_data = (h2o_nif_data_t *)(enif_priv_data(env));
+//         ErlNifResourceType *port_type = priv_data->port;
+//         h2o_nif_port_t *port = NULL;
+//         (void)enif_get_resource(env, argv[0], port_type, (void **)&port);
+//         return (port) ? ATOM_true : ATOM_false;
+//     }
+// }
 
 // static ERL_NIF_TERM
 // h2o_nif_atom_check_1(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
@@ -277,9 +306,49 @@
 /*
  * Erlang NIF callbacks
  */
+ERL_NIF_TERM ATOM_accept;
+ERL_NIF_TERM ATOM_active;
+ERL_NIF_TERM ATOM_already_started;
+ERL_NIF_TERM ATOM_badcfg;
+ERL_NIF_TERM ATOM_children;
+ERL_NIF_TERM ATOM_closed;
+ERL_NIF_TERM ATOM_connected;
+ERL_NIF_TERM ATOM_eagain;
+ERL_NIF_TERM ATOM_error;
+ERL_NIF_TERM ATOM_false;
+ERL_NIF_TERM ATOM_gc_avg;
+ERL_NIF_TERM ATOM_gc_max;
+ERL_NIF_TERM ATOM_gc_min;
+ERL_NIF_TERM ATOM_h2o_handler;
+ERL_NIF_TERM ATOM_h2o_port;
+ERL_NIF_TERM ATOM_h2o_port_closed;
+ERL_NIF_TERM ATOM_h2o_port_data;
+ERL_NIF_TERM ATOM_hm_stat;
+ERL_NIF_TERM ATOM_mem_info;
+ERL_NIF_TERM ATOM_n_buckets;
+ERL_NIF_TERM ATOM_nil;
+ERL_NIF_TERM ATOM_num_accept;
+ERL_NIF_TERM ATOM_num_children;
+ERL_NIF_TERM ATOM_num_listen;
+ERL_NIF_TERM ATOM_num_output;
+ERL_NIF_TERM ATOM_num_ports;
+ERL_NIF_TERM ATOM_ok;
+ERL_NIF_TERM ATOM_once;
+ERL_NIF_TERM ATOM_parent;
+ERL_NIF_TERM ATOM_ports_stat;
+ERL_NIF_TERM ATOM_seq;
+ERL_NIF_TERM ATOM_seq_ports;
+ERL_NIF_TERM ATOM_size;
+ERL_NIF_TERM ATOM_state;
+ERL_NIF_TERM ATOM_true;
+ERL_NIF_TERM ATOM_type;
+ERL_NIF_TERM ATOM_undefined;
+
 static int
 h2o_nif_load(ErlNifEnv *env, void **priv_data, ERL_NIF_TERM load_info)
 {
+    // (void)h2o_nif_aba_init(NULL);
+    // (void)h2o_nif_aba_register();
     if (h2o_nif_mutex == NULL) {
         h2o_nif_mutex = enif_mutex_create("h2o_nif_mutex");
     }
@@ -293,26 +362,40 @@ h2o_nif_load(ErlNifEnv *env, void **priv_data, ERL_NIF_TERM load_info)
     {                                                                                                                              \
         Id = enif_make_atom(env, Value);                                                                                           \
     }
+    ATOM(ATOM_accept, "accept");
     ATOM(ATOM_active, "active");
     ATOM(ATOM_already_started, "already_started");
     ATOM(ATOM_badcfg, "badcfg");
     ATOM(ATOM_children, "children");
     ATOM(ATOM_closed, "closed");
     ATOM(ATOM_connected, "connected");
+    ATOM(ATOM_eagain, "eagain");
     ATOM(ATOM_error, "error");
     ATOM(ATOM_false, "false");
+    ATOM(ATOM_gc_avg, "gc_avg");
+    ATOM(ATOM_gc_max, "gc_max");
+    ATOM(ATOM_gc_min, "gc_min");
+    ATOM(ATOM_h2o_handler, "h2o_handler");
     ATOM(ATOM_h2o_port, "h2o_port");
     ATOM(ATOM_h2o_port_closed, "h2o_port_closed");
     ATOM(ATOM_h2o_port_data, "h2o_port_data");
-    ATOM(ATOM_kh_n_buckets, "kh_n_buckets");
-    ATOM(ATOM_kh_size, "kh_size");
+    ATOM(ATOM_hm_stat, "hm_stat");
     ATOM(ATOM_mem_info, "mem_info");
+    ATOM(ATOM_n_buckets, "n_buckets");
     ATOM(ATOM_nil, "nil");
+    ATOM(ATOM_num_accept, "num_accept");
+    ATOM(ATOM_num_children, "num_children");
+    ATOM(ATOM_num_listen, "num_listen");
+    ATOM(ATOM_num_output, "num_output");
     ATOM(ATOM_num_ports, "num_ports");
     ATOM(ATOM_ok, "ok");
     ATOM(ATOM_once, "once");
     ATOM(ATOM_parent, "parent");
+    ATOM(ATOM_ports_stat, "ports_stat");
+    ATOM(ATOM_seq, "seq");
     ATOM(ATOM_seq_ports, "seq_ports");
+    ATOM(ATOM_size, "size");
+    ATOM(ATOM_state, "state");
     ATOM(ATOM_true, "true");
     ATOM(ATOM_type, "type");
     ATOM(ATOM_undefined, "undefined");
@@ -359,10 +442,16 @@ h2o_nif_load(ErlNifEnv *env, void **priv_data, ERL_NIF_TERM load_info)
     //     return -1;
     // }
     *priv_data = (void *)(data);
-    h2o_srand();
-    h2o_hostinfo_max_threads = H2O_DEFAULT_NUM_NAME_RESOLUTION_THREADS;
-    (void)h2o_sem_init(&h2o_ocsp_updater_semaphore, H2O_DEFAULT_OCSP_UPDATER_MAX_THREADS);
-    h2o_nif_ports = kh_init(h2o_nif_port_t);
+    (void)h2o_nif_globals_load(data);
+    // (void)h2o_nif_globals_init();
+    // h2o_srand();
+    // h2o_hostinfo_max_threads = H2O_DEFAULT_NUM_NAME_RESOLUTION_THREADS;
+    // (void)h2o_sem_init(&h2o_ocsp_updater_semaphore, H2O_DEFAULT_OCSP_UPDATER_MAX_THREADS);
+    // h2o_nif_ports = kh_init(h2o_nif_port_t);
+    // if (ck_ht_init(&ht, CK_HT_MODE_DIRECT, hash_function, &my_allocator, 8, common_lrand48()) == false) {
+    //     perror("ck_ht_init");
+    //     exit(EXIT_FAILURE);
+    // }
     (void)enif_mutex_unlock(h2o_nif_mutex);
     return 0;
 }
@@ -379,8 +468,9 @@ h2o_nif_unload(ErlNifEnv *env, void *priv_data)
     if (h2o_nif_mutex != NULL) {
         (void)enif_mutex_lock(h2o_nif_mutex);
     }
-    h2o_hostinfo_max_threads = 1;
-    (void)h2o_sem_destroy(&h2o_ocsp_updater_semaphore);
+    (void)h2o_nif_globals_unload();
+    // h2o_hostinfo_max_threads = 1;
+    // (void)h2o_sem_destroy(&h2o_ocsp_updater_semaphore);
     if (priv_data != NULL) {
         (void)enif_free(priv_data);
         priv_data = NULL;
@@ -390,9 +480,13 @@ h2o_nif_unload(ErlNifEnv *env, void *priv_data)
         (void)enif_mutex_destroy(h2o_nif_mutex);
         h2o_nif_mutex = NULL;
     }
+    // (void)h2o_nif_aba_unregister();
+    // (void)h2o_nif_aba_done();
 }
 
 static ErlNifFunc h2o_nif_funcs[] = {
+    // {"port_lookup", 1, h2o_nif_port_lookup_1},
+    // {"port_kill", 1, h2o_nif_port_kill_1},
     {"port_open", 0, h2o_nif_port_open_0},
     {"port_open", 1, h2o_nif_port_open_1},
     {"port_close", 1, h2o_nif_port_close_1},
@@ -400,8 +494,16 @@ static ErlNifFunc h2o_nif_funcs[] = {
     {"port_info", 0, h2o_nif_port_info_0},
     {"port_info", 1, h2o_nif_port_info_1},
     {"port_info", 2, h2o_nif_port_info_2},
+    {"port_is_alive", 1, h2o_nif_port_is_alive_1},
     {"port_getopt", 2, h2o_nif_port_getopt_2},
     {"port_setopt", 3, h2o_nif_port_setopt_3},
+    {"port_accept", 1, h2o_nif_port_accept_1},
+    {"port_gc", 0, h2o_nif_port_gc_0},
+    // {"request_add_header", 3, h2o_nif_request_add_header_3},
+    // {"request_delegate", 1, h2o_nif_request_delegate_1},
+    // {"request_send_inline", 2, h2o_nif_request_send_inline_2},
+    // {"request_set_status", 2, h2o_nif_request_set_status_2},
+    {"request_reply", 4, h2o_nif_request_reply_4},
     {"server_open", 0, h2o_nif_server_open_0},
     {"server_getcfg", 1, h2o_nif_server_getcfg_1},
     {"server_setcfg", 2, h2o_nif_server_setcfg_2},
@@ -424,12 +526,8 @@ static ErlNifFunc h2o_nif_funcs[] = {
     // {"server_getstatus", 1, h2o_nif_server_getstatus_1},
     // {"handler_accept", 2, h2o_nif_handler_accept_2},
     // {"request_reply", 1, h2o_nif_request_reply_1},
-    // {"request_delegate", 1, h2o_nif_request_delegate_1},
     // {"request_is_websocket_handshake", 1, h2o_nif_request_is_websocket_handshake_1},
     // {"request_upgrade_to_websocket", 1, h2o_nif_request_upgrade_to_websocket_1},
-    // {"request_send_inline", 2, h2o_nif_request_send_inline_2},
-    // {"request_set_status", 2, h2o_nif_request_set_status_2},
-    // {"request_add_header", 3, h2o_nif_request_add_header_3},
     // {"is_running", 1, h2o_nif_is_running_1},
 };
 

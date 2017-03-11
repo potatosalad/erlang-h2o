@@ -5,72 +5,54 @@
 #define H2O_NIF_HANDLER_H
 
 #include "globals.h"
+#include "port.h"
+#include "server.h"
 
-// typedef struct h2o_nif_multi_timer_s h2o_nif_multi_timer_t;
+#include "resource.h"
 
-// struct h2o_nif_multi_timer_s {
-//     ErlNifTime when;
-//     ErlNifPid caller;
-//     void (*timeout_function)(h2o_nif_handler_t *handler, ErlNifPid *caller);
-//     h2o_nif_multi_timer_t *next;
-//     h2o_nif_multi_timer_t *prev;
-// };
+typedef int H2O_NIF_HANDLER;
 
-// #define H2O_NIF_HDL_MAX_ASYNC 1 /* max number of async queue ops */
+#define H2O_NIF_HANDLER_HTTP 0
+#define H2O_NIF_HANDLER_WEBSOCKET 1
 
-// typedef struct h2o_nif_async_op_s {
-//     int id;           /* id used to identify reply */
-//     ErlNifPid caller; /* recipient of async reply */
-//     int req;          /* Request id (CONNECT/ACCEPT/RECV) */
-//     union {
-//         unsigned value; /* Request timeout (since op issued,not started) */
-//         h2o_nif_multi_timer_t *mtd;
-//     } tmo;
-// } h2o_nif_async_op_t;
-
-// typedef struct h2o_nif_async_multi_op_s h2o_nif_async_multi_op_t;
-
-// struct h2o_nif_async_multi_op_s {
-//     h2o_nif_async_op_t op;
-//     h2o_nif_async_multi_op_t *next;
-// };
-
-enum h2o_nif_hdl_type_t { H2O_NIF_HDL_TYPE_NONBLOCK = 0, H2O_NIF_HDL_TYPE_WEBSOCKET };
-
-struct h2o_nif_hdl_child_s {
+struct h2o_nif_handler_ctx_s {
     h2o_handler_t super;
-    h2o_nif_handler_t *parent;
+    h2o_nif_handler_t *handler;
 };
 
 struct h2o_nif_handler_s {
-    h2o_nif_hdl_type_t type;
-    h2o_nif_data_t *priv_data;
+    h2o_nif_resource_t resource;
+    H2O_NIF_HANDLER type;
+    h2o_nif_port_t *port;
     h2o_nif_server_t *server;
-    h2o_nif_hdl_child_t *child;
-    // ErlNifMutex *mtx;
-    ErlNifEnv *env;
-    ERL_NIF_TERM tag;
-    int state;
-    ErlNifPid caller;
-    h2o_nif_queue_t acc;
-    h2o_nif_queue_t req;
-    // h2o_nif_async_op_t *oph; /* queue head or NULL */
-    // h2o_nif_async_op_t *opt; /* queue tail or NULL */
-    // h2o_nif_async_op_t op_queue[H2O_NIF_HDL_MAX_ASYNC];
-    // h2o_nif_async_multi_op_t *multi_first; /* NULL == no multi-accept-queue, op is in ordinary queue */
-    // h2o_nif_async_multi_op_t *multi_last;
-    // h2o_nif_multi_timer_t *mtd; /* timer structure for multiple accept */
-    // int active;
-    // int active_count;
-    // ERL_NIF_TERM *refs;
-    // size_t num_refs;
-    // ErlNifPid pid;
+    h2o_nif_handler_ctx_t *ctx;
 };
 
-extern h2o_nif_handler_t *h2o_nif_handler_alloc(ErlNifEnv *env);
-extern h2o_nif_hdl_child_t *h2o_nif_handler_register(ErlNifEnv *env, h2o_pathconf_t *pathconf, ERL_NIF_TERM tag,
-                                                     h2o_nif_hdl_type_t type);
-extern void h2o_nif_handler_dtor(ErlNifEnv *env, void *obj);
-extern ERL_NIF_TERM h2o_nif_handler_accept(ErlNifEnv *env, h2o_nif_handler_t *handler, ERL_NIF_TERM timeout);
+typedef struct h2o_nif_handler_http_s {
+    h2o_nif_port_listen_t super;
+    h2o_req_t *req;
+    h2o_nif_handler_t *handler;
+} h2o_nif_handler_http_t;
+
+extern h2o_nif_handler_ctx_t *h2o_nif_handler_register(ErlNifEnv *env, h2o_pathconf_t *pathconf, ERL_NIF_TERM tag,
+                                                       H2O_NIF_HANDLER type);
+// extern void h2o_nif_handler_dtor(h2o_nif_handler_t *handler);
+// extern void h2o_nif_handler_on_close(ErlNifEnv *env, h2o_nif_port_t *port);
+// extern ERL_NIF_TERM h2o_nif_handler_accept(ErlNifEnv *env, h2o_nif_handler_t *handler, ERL_NIF_TERM timeout);
+
+static int h2o_nif_handler_keep(h2o_nif_handler_t *handler);
+static int h2o_nif_handler_release(h2o_nif_handler_t *handler);
+
+inline int
+h2o_nif_handler_keep(h2o_nif_handler_t *handler)
+{
+    return h2o_nif_resource_keep((void *)handler);
+}
+
+inline int
+h2o_nif_handler_release(h2o_nif_handler_t *handler)
+{
+    return h2o_nif_resource_release((void *)handler);
+}
 
 #endif

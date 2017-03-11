@@ -17,35 +17,33 @@
 -export([open/1]).
 -export([close/1]).
 -export([controlling_process/2]).
--export([to_id/1]).
+-export([accept/1]).
+-export([accept/2]).
 
 %% Types
 -type id() :: integer().
--type ref() :: {id(), binary() | reference()}.
--type obj() :: #h2o_port{}.
+-type ref() :: #h2o_port{}.
 -export_type([id/0]).
 -export_type([ref/0]).
--export_type([obj/0]).
 
 %%%===================================================================
 %%% Public API
 %%%===================================================================
 
 open() ->
-	Port = #h2o_port{id=ID} = h2o_nif:port_open(),
-	true = h2o_kernel:port_connect(ID),
+	Port = #h2o_port{} = h2o_nif:port_open(),
+	true = h2o_kernel:port_connect(Port),
 	{ok, Port}.
 
 open(Parent) ->
-	Child = #h2o_port{id=ID} = h2o_nif:port_open(Parent),
-	true = h2o_kernel:port_connect(ID),
+	Child = #h2o_port{} = h2o_nif:port_open(Parent),
+	true = h2o_kernel:port_connect(Child),
 	{ok, Child}.
 
 close(Port) ->
-	ID = to_id(Port),
 	ok = h2o_nif:port_close(Port),
 	receive
-		{h2o_port_closed, ID} ->
+		{h2o_port_closed, Port} ->
 			ok
 	after
 		0 ->
@@ -74,7 +72,7 @@ controlling_process(Port, NewOwner) when is_pid(NewOwner) ->
 						{false, ok} ->
 							try h2o_nif:port_connect(Port, NewOwner) of
 								true ->
-									true = h2o_kernel:port_connect(to_id(Port), NewOwner),
+									true = h2o_kernel:port_connect(Port, NewOwner),
 									case A0 of
 										false -> ok;
 										_ -> h2o_nif:port_setopt(Port, active, A0)
@@ -91,10 +89,76 @@ controlling_process(Port, NewOwner) when is_pid(NewOwner) ->
 			end
 	end.
 
-to_id(#h2o_port{id=ID}) ->
-	ID;
-to_id(ID) when is_integer(ID) ->
-	ID.
+accept(LPort) ->
+	case h2o_nif:port_accept(LPort) of
+		{ok, APort} ->
+			true = h2o_kernel:port_connect(APort),
+			{ok, APort};
+		{accept, AsyncID} ->
+			receive
+				{accept, AsyncID, APort} ->
+					true = h2o_kernel:port_connect(APort),
+					{ok, APort}
+			end;
+		AcceptError ->
+			AcceptError
+	end.
+
+accept(LPort, infinity) ->
+	accept(LPort);
+accept(LPort, Timeout) when is_integer(Timeout) andalso Timeout >= 0 ->
+	Parent = self(),
+	Ref = erlang:make_ref(),
+	{Pid, MonitorRef} = spawn_monitor(fun() ->
+		case h2o_nif:port_accept(LPort) of
+			{ok, APort} ->
+				true = h2o_kernel:port_connect(APort),
+				ok = controlling_process(APort, Parent),
+				Parent ! {shoot, Ref, APort},
+				receive
+					{ack, Ref} ->
+						exit(normal)
+				end;
+			{accept, AsyncID} ->
+				receive
+					{accept, AsyncID, APort} ->
+						true = h2o_kernel:port_connect(APort),
+						Parent ! {shoot, Ref, APort},
+						ok = controlling_process(APort, Parent),
+						receive
+							{ack, Ref} ->
+								exit(normal)
+						end
+				after
+					Timeout ->
+						Parent ! {timeout, Ref},
+						exit(normal)
+				end;
+			AcceptError ->
+				Parent ! {error, Ref, AcceptError},
+				exit(normal)
+		end
+	end),
+	receive
+		{shoot, Ref, APort} ->
+			Pid ! {ack, Ref},
+			receive
+				{'DOWN', MonitorRef, process, Pid, normal} ->
+					{ok, APort}
+			end;
+		{timeout, Ref} ->
+			receive
+				{'DOWN', MonitorRef, process, Pid, normal} ->
+					{error, timeout}
+			end;
+		{error, Ref, AcceptError} ->
+			receive
+				{'DOWN', MonitorRef, process, Pid, normal} ->
+					AcceptError
+			end;
+		{'DOWN', MonitorRef, process, Pid, Reason} ->
+			{error, Reason}
+	end.
 
 %%%-------------------------------------------------------------------
 %%% Internal functions
@@ -102,17 +166,13 @@ to_id(ID) when is_integer(ID) ->
 
 %% @private
 sync_input(P, Owner, Flag) ->
-	sync_input(P, to_id(P), Owner, Flag).
-
-%% @private
-sync_input(P, ID, Owner, Flag) ->
 	receive
-		{h2o_port_data, ID, Data} ->
-			Owner ! {h2o_port_data, ID, Data},
-			sync_input(P, ID, Owner, Flag);
-		{h2o_port_closed, ID} ->
-			Owner ! {h2o_port_closed, ID},
-			sync_input(P, ID, Owner, true)
+		{h2o_port_data, P, Data} ->
+			Owner ! {h2o_port_data, P, Data},
+			sync_input(P, Owner, Flag);
+		{h2o_port_closed, P} ->
+			Owner ! {h2o_port_closed, P},
+			sync_input(P, Owner, true)
 	after
 		0 ->
 			Flag

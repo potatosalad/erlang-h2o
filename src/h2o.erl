@@ -11,6 +11,7 @@
 -module(h2o).
 
 -export([start/0]).
+-export([example/0]).
 % -export([server_open/0]).
 % -export([server_getcfg/1]).
 % -export([server_setcfg/2]).
@@ -23,6 +24,65 @@
 
 start() ->
 	application:ensure_all_started(?MODULE).
+
+example() ->
+	{ok, SPort} = h2o_server:open(),
+	% {ok, [{_, _, _, _, LPort}]} = h2o_server:setcfg(SPort, [
+	{ok, []} = h2o_server:setcfg(SPort, [
+		{<<"listen">>, 8080},
+		% {<<"access-log">>, <<"./access.log">>},
+		% {<<"error-log">>, <<"./error.log">>},
+		% {<<"num-threads">>, 1},
+		{<<"hosts">>, [
+			{<<"*">>, [
+				{<<"paths">>, [
+					{<<"/">>, [
+						{<<"fake.handler">>, 1}
+						% {<<"erlang.handler">>, {my_module, []}}%,
+						% {<<"file.dir">>, <<"/Users/andrew/Documents">>}
+					]}
+				]}
+			]}
+		]}
+	]),
+	ok = h2o_server:start(SPort),
+	ok.
+	% _ = application:ensure_all_started(ranch),
+	% ranch:start_listener(my_ref, 100, ranch_h2o, [{socket, LPort}], h2o_protocol, []).
+	% {ok, LPort}.
+	% Loop = fun Loop() ->
+	% 	{ok, RPort} = h2o_port:accept(LPort),
+	% 	ok = h2o_req:set_status(RPort, 404),
+	% 	ok = h2o_req:add_header(RPort, <<"content-type">>, <<"text/plain">>),
+	% 	ok = h2o_req:send_inline(RPort, <<"Unknown Error">>),
+	% 	Loop()
+	% end,
+	% {ok, spawn(Loop)}.
+	% h2o_port:accept(LPort).
+	% {ok, SPort} = h2o_server:open(),
+	% {ok, [{_, _, _, _, LPort}]} = h2o_server:setcfg(SPort, [
+	% 	{<<"listen">>, 8080},
+	% 	{<<"access-log">>, <<"./access.log">>},
+	% 	{<<"error-log">>, <<"./error.log">>},
+	% 	{<<"num-threads">>, 1},
+	% 	{<<"hosts">>, [
+	% 		{<<"*">>, [
+	% 			{<<"paths">>, [
+	% 				{<<"/">>, [
+	% 					{<<"erlang.handler">>, {my_module, []}},
+	% 					{<<"file.dir">>, <<"/Users/andrew/Documents">>}
+	% 				]}
+	% 			]}
+	% 		]}
+	% 	]}
+	% ]),
+	% ok = h2o_server:start(SPort),
+	% Loop = fun Loop() ->
+	% 	{ok, RPort} = h2o_port:accept(LPort),
+	% 	ok = h2o_req:delegate(RPort),
+	% 	Loop()
+	% end,
+	% {ok, spawn(Loop)}.
 
 % server_open() ->
 % 	h2o_nif:server_open().

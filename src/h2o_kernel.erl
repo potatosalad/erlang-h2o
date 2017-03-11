@@ -15,6 +15,7 @@
 -export([start_link/0]).
 -export([port_connect/1]).
 -export([port_connect/2]).
+-export([port_gc/0]).
 
 %% gen_server callbacks
 -export([init/1]).
@@ -25,11 +26,13 @@
 -export([code_change/3]).
 
 %% Types
--type monitors() :: [{{reference(), pid()}, h2o_port:id()}].
+-type monitors() :: [{{reference(), pid()}, h2o_port:ref()}].
 
 %% Records
 -record(state, {
-	monitors = [] :: monitors()
+	monitors = [] :: monitors(),
+	gc_pid = undefined :: undefined | pid(),
+	gc_ref = undefined :: undefined | reference()
 }).
 
 %% Macros
@@ -44,17 +47,20 @@
 start_link() ->
 	gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
--spec port_connect(h2o_port:id())
+-spec port_connect(h2o_port:ref())
 	-> true.
-port_connect(PortID) ->
-	true = gen_server:call(?MODULE, {port_connect, PortID, self()}),
+port_connect(Port) ->
+	true = gen_server:call(?MODULE, {port_connect, Port, self()}),
 	true.
 
--spec port_connect(h2o_port:id(), pid())
+-spec port_connect(h2o_port:ref(), pid())
 	-> true.
-port_connect(PortID, NewOwner) ->
-	true = gen_server:call(?MODULE, {port_connect, PortID, self(), NewOwner}),
+port_connect(Port, NewOwner) ->
+	true = gen_server:call(?MODULE, {port_connect, Port, self(), NewOwner}),
 	true.
+
+port_gc() ->
+	gen_server:call(?MODULE, port_gc).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -64,7 +70,8 @@ port_connect(PortID, NewOwner) ->
 	-> ignore | {ok, #state{}} | {stop, any()}.
 init([]) ->
 	Monitors = [{{erlang:monitor(process, Pid), Pid}, Port} || [Port, Pid] <- ets:match(?TAB, {{port, '$1'}, '$2'})],
-	{ok, #state{monitors=Monitors}}.
+	State = #state{monitors=Monitors},
+	{ok, start_gc_timer(State)}.
 
 -spec handle_call(any(), {pid(), any()}, #state{})
 	-> {reply, any(), #state{}}.
@@ -90,6 +97,12 @@ handle_call({port_connect, Port, Pid, NewOwner}, _From, State=#state{monitors=Mo
 		[] ->
 			{reply, false, State}
 	end;
+handle_call(port_gc, _From, State=#state{monitors=Monitors, gc_pid=undefined}) ->
+	Ports = [Port || {_, Port} <- Monitors],
+	{ok, GCPid} = h2o_gc:start_link(Ports),
+	{reply, true, stop_gc_timer(State#state{gc_pid=GCPid})};
+handle_call(port_gc, _From, State) ->
+	{reply, true, State};
 handle_call(_Request, _From, State) ->
 	{reply, ignore, State}.
 
@@ -111,6 +124,21 @@ handle_info({'DOWN', MonitorRef, process, Pid, _}, State=#state{monitors=Monitor
 		false ->
 			{noreply, State}
 	end;
+handle_info({h2o_gc_port, GCPid, Port}, State=#state{monitors=Monitors, gc_pid=GCPid}) ->
+	case lists:keytake(Port, 2, Monitors) of
+		{value, {{MonitorRef, _Pid}, Port}, Monitors2} ->
+			true = ets:delete(?TAB, {port, Port}),
+			true = erlang:demonitor(MonitorRef, [flush]),
+			{noreply, State#state{monitors=Monitors2}};
+		false ->
+			{noreply, State}
+	end;
+handle_info({h2o_gc_stop, GCPid}, State=#state{gc_pid=GCPid}) ->
+	{noreply, start_gc_timer(State#state{gc_pid=undefined})};
+handle_info({timeout, GCRef, gc_start}, State=#state{monitors=Monitors, gc_ref=GCRef, gc_pid=undefined}) ->
+	Ports = [Port || {_, Port} <- Monitors],
+	{ok, GCPid} = h2o_gc:start_link(Ports),
+	{noreply, State#state{gc_pid=GCPid, gc_ref=undefined}};
 handle_info(_Info, State) ->
 	{noreply, State}.
 
@@ -140,3 +168,17 @@ disconnect([Monitor | Monitors], Port, Pid, Head) ->
 	disconnect(Monitors, Port, Pid, [Monitor | Head]);
 disconnect([], _Port, _Pid, Head) ->
 	lists:reverse(Head).
+
+%% @private
+start_gc_timer(State=#state{gc_ref=undefined}) ->
+	GCRef = erlang:start_timer(5000, self(), gc_start),
+	State#state{gc_ref=GCRef};
+start_gc_timer(State) ->
+	start_gc_timer(stop_gc_timer(State)).
+
+%% @private
+stop_gc_timer(State=#state{gc_ref=undefined}) ->
+	State;
+stop_gc_timer(State=#state{gc_ref=GCRef}) ->
+	_ = erlang:cancel_timer(GCRef),
+	State#state{gc_ref=undefined}.

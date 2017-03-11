@@ -28,7 +28,8 @@ struct h2o_nif_cfg_listen_s {
 
 extern int h2o_nif_config_init(h2o_nif_config_t *config);
 extern void h2o_nif_config_dispose(h2o_nif_config_t *config);
-extern ERL_NIF_TERM h2o_nif_config_get(ErlNifEnv *env, h2o_nif_config_t *config);
-extern ERL_NIF_TERM h2o_nif_config_set(ErlNifEnv *env, h2o_nif_config_t *config, ErlNifBinary *input);
+extern int h2o_nif_config_get(ErlNifEnv *env, h2o_nif_config_t *config, ERL_NIF_TERM *out);
+extern int h2o_nif_config_set(ErlNifEnv *env, h2o_nif_port_t *port, h2o_nif_config_t *config, ErlNifBinary *input,
+                              ERL_NIF_TERM *out);
 
 #endif

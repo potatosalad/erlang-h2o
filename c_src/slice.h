@@ -6,6 +6,18 @@
 
 #include "globals.h"
 
+#ifndef timersub
+#define timersub(tvp, uvp, vvp)                                                                                                    \
+    do {                                                                                                                           \
+        (vvp)->tv_sec = (tvp)->tv_sec - (uvp)->tv_sec;                                                                             \
+        (vvp)->tv_usec = (tvp)->tv_usec - (uvp)->tv_usec;                                                                          \
+        if ((vvp)->tv_usec < 0) {                                                                                                  \
+            (vvp)->tv_sec--;                                                                                                       \
+            (vvp)->tv_usec += 1000000;                                                                                             \
+        }                                                                                                                          \
+    } while ((vvp)->tv_usec >= 1000000)
+#endif
+
 typedef size_t(h2o_nif_slice_map_t)(ErlNifEnv *env, h2o_nif_slice_t *slice, size_t offset, size_t length);
 typedef ERL_NIF_TERM(h2o_nif_slice_reduce_t)(ErlNifEnv *env, h2o_nif_slice_t *slice);
 

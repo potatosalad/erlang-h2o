@@ -51,85 +51,195 @@
 %%% Public API
 %%%===================================================================
 
--spec encode(any()) -> iodata().
+-spec encode(any()) -> {iodata(), any()}.
 encode(Term) ->
-	[encode_term(Term, 0, "---\n"), "\n"].
+	{YAML, Bindings} = encode_term(Term, 0, "---\n", []),
+	{[YAML, $\n], lists:reverse(Bindings)}.
 
 %%%-------------------------------------------------------------------
 %%% Internal functions
 %%%-------------------------------------------------------------------
 
 %% @private
-encode_term(Dict=[{_, _} | _], Level, Acc) ->
-	encode_dict(Dict, Level, Acc);
-encode_term(List, Level, Acc) when is_list(List) ->
-	encode_list(List, Level, Acc);
-encode_term(Map, Level, Acc) when is_map(Map) ->
-	encode_map(Map, Level, Acc);
-encode_term(Scalar, Level, Acc) when ?is_scalar(Scalar) ->
-	encode_scalar(Scalar, Level, Acc).
+encode_term(Dict=[{_, _} | _], Level, Acc, Bindings) ->
+	encode_dict(Dict, Level, Acc, Bindings);
+encode_term(List, Level, Acc, Bindings) when is_list(List) ->
+	encode_list(List, Level, Acc, Bindings);
+encode_term(Map, Level, Acc, Bindings) when is_map(Map) ->
+	encode_map(Map, Level, Acc, Bindings);
+encode_term(Scalar, Level, Acc, Bindings) when ?is_scalar(Scalar) ->
+	encode_scalar(Scalar, Level, Acc, Bindings).
 
 %% @private
-encode_dict(Dict, Level, Acc) ->
-	Indent = indent(Level),
-	[Acc | [begin
-		case V of
-			[] ->
-				["\n", Indent, encode_scalar(K, 0, []), ": []"];
-			_ when (is_list(V) orelse is_map(V)) ->
-				["\n", Indent, encode_scalar(K, 0, []), ":", encode_term(V, Level + 1, [])];
-			_ when ?is_scalar(V) ->
-				["\n", Indent, encode_scalar(K, 0, []), ": ", encode_scalar(V, 0, [])];
-			_ ->
-				[]
-		end
-	end || {K, V} <- Dict, ?is_scalar(K)]].
+encode_dict(Dict, Level, Acc, Bindings) ->
+	encode_dict(Dict, indent(Level), Level, Acc, Bindings).
 
 %% @private
-encode_list([], Level, Acc) ->
-	Indent = indent(Level),
-	[Acc, "\n", Indent, "[]"];
-encode_list(List, Level, Acc) ->
-	Indent = indent(Level),
-	[Acc | [begin
-		{Sep, Lvl} = if
-			is_list(Element) orelse is_map(Element) ->
-				{"-", Level + 1};
-			true ->
-				{"- ", 0}
-		end,
-		encode_term(Element, Lvl, ["\n", Indent, Sep])
-	end || Element <- List]].
+encode_dict([{K, V} | Dict], Indent, Level, Acc0, Bindings0) ->
+	{Acc1, Bindings1} = encode_dict_term(K, V, Indent, Level, Acc0, Bindings0),
+	encode_dict(Dict, Indent, Level, Acc1, Bindings1);
+encode_dict([], _Indent, _Level, Acc, Bindings) ->
+	{Acc, Bindings};
+encode_dict(List, _Indent, _Level, _Acc, _Bindings) ->
+	erlang:error({badarg, [List]}).
 
 %% @private
-encode_map(Map, Level, Acc) ->
-	Indent = indent(Level),
-	Folder = fun
-		(K, [], A) when ?is_scalar(K) ->
-			[A, "\n", Indent, encode_scalar(K, 0, []), ": []"];
-		(K, V, A) when ?is_scalar(K) andalso (is_list(V) orelse is_map(V)) ->
-			[A, "\n", Indent, encode_scalar(K, 0, []), ":", encode_term(V, Level + 1, [])];
-		(K, V, A) when ?is_scalar(K) andalso ?is_scalar(V) ->
-			[A, "\n", Indent, encode_scalar(K, 0, []), ": ", encode_scalar(V, 0, [])];
-		(_, _, A) ->
-			A
-	end,
-	maps:fold(Folder, Acc, Map).
+encode_dict_term(K0, [], Indent, _Level, Acc0, Bindings0) when ?is_scalar(K0) ->
+	{K1, Bindings1} = encode_scalar(K0, 0, [], Bindings0),
+	Acc1 = [Acc0, $\n, Indent, K1, $:, $\s, $[, $]],
+	{Acc1, Bindings1};
+encode_dict_term(K0 = <<"hosts">>, V0, Indent, Level, Acc0, Bindings0) when (is_list(V0) orelse is_map(V0)) ->
+	{K1, Bindings1} = encode_scalar(K0, 0, [], Bindings0),
+	{V1, Bindings2} = encode_dict_hosts(V0, Level + 1, [], Bindings1),
+	Acc1 = [Acc0, $\n, Indent, K1, $:, V1],
+	{Acc1, Bindings2};
+encode_dict_term(K0, V0, Indent, Level, Acc0, Bindings0) when ?is_scalar(K0) andalso (is_list(V0) orelse is_map(V0)) ->
+	{K1, Bindings1} = encode_scalar(K0, 0, [], Bindings0),
+	{V1, Bindings2} = encode_term(V0, Level + 1, [], Bindings1),
+	Acc1 = [Acc0, $\n, Indent, K1, $:, V1],
+	{Acc1, Bindings2};
+encode_dict_term(K0, V0, Indent, _Level, Acc0, Bindings0) when ?is_scalar(K0) andalso ?is_scalar(V0) ->
+	{K1, Bindings1} = encode_scalar(K0, 0, [], Bindings0),
+	{V1, Bindings2} = encode_scalar(V0, 0, [], Bindings1),
+	Acc1 = [Acc0, $\n, Indent, K1, $:, $\s, V1],
+	{Acc1, Bindings2};
+encode_dict_term(K, V, _Indent, _Level, _Acc, _Bindings) ->
+	erlang:error({badarg, [K, V]}).
 
 %% @private
-encode_scalar(Binary, Level, Acc) when is_binary(Binary) ->
-	[Acc, indent(Level), $", ?ESCAPE_BIN(Binary), $"];
-encode_scalar(Boolean, Level, Acc) when is_boolean(Boolean) ->
-	[Acc, indent(Level), atom_to_list(Boolean)];
-encode_scalar(Float, Level, Acc) when is_float(Float) ->
-	[Acc, indent(Level), float_to_list(Float)];
-encode_scalar(Integer, Level, Acc) when is_integer(Integer) ->
-	[Acc, indent(Level), integer_to_list(Integer)];
-encode_scalar(nil, Level, Acc) ->
-	[Acc, indent(Level), "!!null"];
-encode_scalar(Reference, Level, Acc) when is_reference(Reference) ->
-	[Acc, indent(Level), "!!binary ", $", h2o_nif:string_base64_encode(erlang:term_to_binary(Reference), true), $"].
+encode_dict_hosts(Map, Level, Acc, Bindings) when is_map(Map) ->
+	encode_dict_hosts(maps:to_list(Map), Level, Acc, Bindings);
+encode_dict_hosts(Dict=[{_, _} | _], Level, Acc, Bindings) ->
+	encode_dict_hosts(Dict, indent(Level), Level, Acc, Bindings);
+encode_dict_hosts(List, _Level, _Acc, _Bindings) ->
+	erlang:error({badarg, [List]}).
+
+%% @private
+encode_dict_hosts([{K0, V0} | Dict], Indent, Level, Acc0, Bindings0) when ?is_scalar(K0) andalso (is_list(V0) orelse is_map(V0)) ->
+	{K1, Bindings1} = encode_scalar(K0, 0, [], Bindings0),
+	{V1, Bindings2} = encode_dict_host(V0, Level + 1, [], [K0], Bindings1),
+	Acc1 = [Acc0, $\n, Indent, K1, $:, V1],
+	encode_dict_hosts(Dict, Indent, Level, Acc1, Bindings2);
+encode_dict_hosts([], _Indent, _Level, Acc, Bindings) ->
+	{Acc, Bindings};
+encode_dict_hosts(List, _Indent, _Level, _Acc, _Bindings) ->
+	erlang:error({badarg, [List]}).
+
+%% @private
+encode_dict_host(Map, Level, Acc, Binding, Bindings) when is_map(Map) ->
+	encode_dict_host(maps:to_list(Map), Level, Acc, Binding, Bindings);
+encode_dict_host(Dict=[{_, _} | _], Level, Acc, Binding, Bindings) ->
+	encode_dict_host(Dict, indent(Level), Level, Acc, Binding, Bindings);
+encode_dict_host(List, _Level, _Acc, _Binding, _Bindings) ->
+	erlang:error({badarg, [List]}).
+
+%% @private
+encode_dict_host([{K0 = <<"paths">>, V0} | Dict], Indent, Level, Acc0, Binding, Bindings0) when ?is_scalar(K0) andalso (is_list(V0) orelse is_map(V0)) ->
+	{K1, Bindings1} = encode_scalar(K0, 0, [], Bindings0),
+	{V1, Bindings2} = encode_dict_paths(V0, Level + 1, [], Binding, Bindings1),
+	Acc1 = [Acc0, $\n, Indent, K1, $:, V1],
+	encode_dict_host(Dict, Indent, Level, Acc1, Binding, Bindings2);
+encode_dict_host([{K, V} | Dict], Indent, Level, Acc0, Binding, Bindings0) ->
+	{Acc1, Bindings1} = encode_dict_term(K, V, Indent, Level, Acc0, Bindings0),
+	encode_dict_host(Dict, Indent, Level, Acc1, Binding, Bindings1);
+encode_dict_host([], _Indent, _Level, Acc, _Binding, Bindings) ->
+	{Acc, Bindings};
+encode_dict_host(List, _Indent, _Level, _Acc, _Binding, _Bindings) ->
+	erlang:error({badarg, [List]}).
+
+%% @private
+encode_dict_paths(Map, Level, Acc, Binding, Bindings) when is_map(Map) ->
+	encode_dict_paths(maps:to_list(Map), Level, Acc, Binding, Bindings);
+encode_dict_paths(Dict=[{_, _} | _], Level, Acc, Binding, Bindings) ->
+	encode_dict_paths(Dict, indent(Level), Level, Acc, Binding, Bindings);
+encode_dict_paths(List, _Level, _Acc, _Binding, _Bindings) ->
+	erlang:error({badarg, [List]}).
+
+%% @private
+encode_dict_paths([{K0, V0} | Dict], Indent, Level, Acc0, Binding, Bindings0) when ?is_scalar(K0) andalso (is_list(V0) orelse is_map(V0)) ->
+	{K1, Bindings1} = encode_scalar(K0, 0, [], Bindings0),
+	{V1, Bindings2} = encode_dict_path(V0, Level + 1, [], [K0 | Binding], Bindings1),
+	Acc1 = [Acc0, $\n, Indent, K1, $:, V1],
+	encode_dict_paths(Dict, Indent, Level, Acc1, Binding, Bindings2);
+encode_dict_paths([], _Indent, _Level, Acc, _Binding, Bindings) ->
+	{Acc, Bindings};
+encode_dict_paths(List, _Indent, _Level, _Acc, _Binding, _Bindings) ->
+	erlang:error({badarg, [List]}).
+
+%% @private
+encode_dict_path(Map, Level, Acc, Binding, Bindings) when is_map(Map) ->
+	encode_dict_path(maps:to_list(Map), Level, Acc, Binding, Bindings);
+encode_dict_path(Dict=[{_, _} | _], Level, Acc, Binding, Bindings) ->
+	encode_dict_path(Dict, indent(Level), Level, Acc, Binding, Bindings);
+encode_dict_path(List, _Level, _Acc, _Binding, _Bindings) ->
+	erlang:error({badarg, [List]}).
+
+%% @private
+encode_dict_path([{K0, {Handler, Opts}} | Dict], Indent, Level, Acc0, Binding, Bindings0)
+		when (K0 == <<"erlang.filter">>
+			orelse K0 == <<"erlang.handler">>
+			orelse K0 == <<"erlang.logger">>
+			orelse K0 == <<"erlang.websocket">>)
+		andalso is_atom(Handler) ->
+	{K1, Bindings1} = encode_scalar(K0, 0, [], Bindings0),
+	Ref = erlang:make_ref(),
+	{V1, Bindings2} = encode_scalar(Ref, 0, [], Bindings1),
+	Type = handler_type(K0),
+	Bindings3 = [list_to_tuple(lists:reverse([Ref, {Handler, Opts}, Type | Binding])) | Bindings2],
+	Acc1 = [Acc0, $\n, Indent, K1, $:, $\s, V1],
+	encode_dict_path(Dict, Indent, Level, Acc1, Binding, Bindings3);
+encode_dict_path([{K, V} | Dict], Indent, Level, Acc0, Binding, Bindings0) ->
+	{Acc1, Bindings1} = encode_dict_term(K, V, Indent, Level, Acc0, Bindings0),
+	encode_dict_path(Dict, Indent, Level, Acc1, Binding, Bindings1);
+encode_dict_path([], _Indent, _Level, Acc, _Binding, Bindings) ->
+	{Acc, Bindings};
+encode_dict_path(List, _Indent, _Level, _Acc, _Binding, _Bindings) ->
+	erlang:error({badarg, [List]}).
+
+%% @private
+encode_list([], Level, Acc, Bindings) ->
+	Indent = indent(Level),
+	{[Acc, $\n, Indent, $[, $]], Bindings};
+encode_list(List, Level, Acc, Bindings) ->
+	encode_list(List, indent(Level), Level, Acc, Bindings).
+
+%% @private
+encode_list([Element | List], Indent, Level, Acc, Bindings) when is_list(Element) orelse is_map(Element) ->
+	{Acc2, Bindings2} = encode_term(Element, Level + 1, [Acc, $\n, Indent, $-], Bindings),
+	encode_list(List, Indent, Level, Acc2, Bindings2);
+encode_list([Element | List], Indent, Level, Acc, Bindings) when ?is_scalar(Element) ->
+	{Acc2, Bindings2} = encode_scalar(Element, 0, [Acc, $\n, Indent, $-, $\s], Bindings),
+	encode_list(List, Indent, Level, Acc2, Bindings2);
+encode_list([], _Indent, _Level, Acc, Bindings) ->
+	{Acc, Bindings};
+encode_list(List, _Indent, _Level, _Acc, _Bindings) ->
+	erlang:error({badarg, [List]}).
+
+%% @private
+encode_map(Map, Level, Acc, Bindings) ->
+	encode_dict(maps:to_list(Map), Level, Acc, Bindings).
+
+%% @private
+encode_scalar(Binary, Level, Acc, Bindings) when is_binary(Binary) ->
+	{[Acc, indent(Level), $", ?ESCAPE_BIN(Binary), $"], Bindings};
+encode_scalar(Boolean, Level, Acc, Bindings) when is_boolean(Boolean) ->
+	{[Acc, indent(Level), atom_to_list(Boolean)], Bindings};
+encode_scalar(Float, Level, Acc, Bindings) when is_float(Float) ->
+	{[Acc, indent(Level), float_to_list(Float)], Bindings};
+encode_scalar(Integer, Level, Acc, Bindings) when is_integer(Integer) ->
+	{[Acc, indent(Level), integer_to_list(Integer)], Bindings};
+encode_scalar(nil, Level, Acc, Bindings) ->
+	{[Acc, indent(Level), $!, $!, $n, $u, $l, $l], Bindings};
+encode_scalar(Reference, Level, Acc, Bindings) when is_reference(Reference) ->
+	{[Acc, indent(Level), $!, $!, $b, $i, $n, $a, $r, $y, $\s, $", h2o_nif:string_base64_encode(erlang:term_to_binary(Reference), true), $"], Bindings}.
 
 %% @private
 indent(Level) ->
 	binary:copy(<<"  ">>, Level).
+
+%% @private
+handler_type(<<"erlang.filter">>) -> h2o_filter;
+handler_type(<<"erlang.handler">>) -> h2o_handler;
+handler_type(<<"erlang.logger">>) -> h2o_logger;
+handler_type(<<"erlang.websocket">>) -> h2o_websocket;
+handler_type(BadType) -> erlang:error({badarg, [BadType]}).

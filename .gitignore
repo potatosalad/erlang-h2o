@@ -5,8 +5,6 @@ _*
 *.plt
 *.swp
 *.swo
-/.h2o
-/.wslay
 .erlang.cookie
 .erlang.mk.packages.*
 ebin
@@ -26,6 +24,7 @@ logs
 test/ct.cover.spec
 /.erlang.mk
 /_build
+/c_deps
 /c_src/env.mk
 /cover
 /h2o.d

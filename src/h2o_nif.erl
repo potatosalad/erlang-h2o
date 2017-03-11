@@ -11,6 +11,8 @@
 -module(h2o_nif).
 
 %% h2o_nif/port.c.h
+-export([port_lookup/1]).
+-export([port_kill/1]).
 -export([port_open/0]).
 -export([port_open/1]).
 -export([port_close/1]).
@@ -18,8 +20,18 @@
 -export([port_info/0]).
 -export([port_info/1]).
 -export([port_info/2]).
+-export([port_is_alive/1]).
 -export([port_getopt/2]).
 -export([port_setopt/3]).
+-export([port_accept/1]).
+-export([port_gc/0]).
+
+%% h2o_nif/request.c.h
+-export([request_add_header/3]).
+-export([request_delegate/1]).
+-export([request_send_inline/2]).
+-export([request_set_status/2]).
+-export([request_reply/4]).
 
 %% h2o_nif/server.c.h
 -export([server_open/0]).
@@ -51,16 +63,18 @@
 % -export([request_reply/1]).
 % -export([request_is_websocket_handshake/1]).
 % -export([request_upgrade_to_websocket/1]).
-% -export([request_delegate/1]).
-% -export([request_add_header/3]).
-% -export([request_send_inline/2]).
-% -export([request_set_status/2]).
 
 -on_load(init/0).
 
 %%%===================================================================
 %%% h2o_nif/port.c.h
 %%%===================================================================
+
+port_lookup(_Port) ->
+	erlang:nif_error({nif_not_loaded, ?MODULE}).
+
+port_kill(_Port) ->
+	erlang:nif_error({nif_not_loaded, ?MODULE}).
 
 port_open() ->
 	erlang:nif_error({nif_not_loaded, ?MODULE}).
@@ -83,10 +97,38 @@ port_info(_Port) ->
 port_info(_Port, _Item) ->
 	erlang:nif_error({nif_not_loaded, ?MODULE}).
 
+port_is_alive(_Port) ->
+	erlang:nif_error({nif_not_loaded, ?MODULE}).
+
 port_getopt(_Port, _Opt) ->
 	erlang:nif_error({nif_not_loaded, ?MODULE}).
 
 port_setopt(_Port, _Opt, _Val) ->
+	erlang:nif_error({nif_not_loaded, ?MODULE}).
+
+port_accept(_Port) ->
+	erlang:nif_error({nif_not_loaded, ?MODULE}).
+
+port_gc() ->
+	erlang:nif_error({nif_not_loaded, ?MODULE}).
+
+%%%===================================================================
+%%% h2o_nif/request.c.h
+%%%===================================================================
+
+request_add_header(_Request, _Name, _Value) ->
+	erlang:nif_error({nif_not_loaded, ?MODULE}).
+
+request_delegate(_Request) ->
+	erlang:nif_error({nif_not_loaded, ?MODULE}).
+
+request_send_inline(_Request, _Body) ->
+	erlang:nif_error({nif_not_loaded, ?MODULE}).
+
+request_set_status(_Request, _Status) ->
+	erlang:nif_error({nif_not_loaded, ?MODULE}).
+
+request_reply(_Request, _Status, _Headers, _Body) ->
 	erlang:nif_error({nif_not_loaded, ?MODULE}).
 
 %%%===================================================================
@@ -151,8 +193,6 @@ string_str_stripws(_S) ->
 string_htmlescape(_Src) ->
 	erlang:nif_error({nif_not_loaded, ?MODULE}).
 
-
-
 % atom_check(_Atom) ->
 % 	erlang:nif_error({nif_not_loaded, ?MODULE}).
 
@@ -169,18 +209,6 @@ string_htmlescape(_Src) ->
 % 	erlang:nif_error({nif_not_loaded, ?MODULE}).
 
 % request_upgrade_to_websocket(_Request) ->
-% 	erlang:nif_error({nif_not_loaded, ?MODULE}).
-
-% request_delegate(_Request) ->
-% 	erlang:nif_error({nif_not_loaded, ?MODULE}).
-
-% request_add_header(_Request, _Name, _Value) ->
-% 	erlang:nif_error({nif_not_loaded, ?MODULE}).
-
-% request_send_inline(_Request, _Body) ->
-% 	erlang:nif_error({nif_not_loaded, ?MODULE}).
-
-% request_set_status(_Request, _Status) ->
 % 	erlang:nif_error({nif_not_loaded, ?MODULE}).
 
 %% @private

@@ -3,18 +3,6 @@
 
 #include "slice.h"
 
-#ifndef timersub
-#define timersub(tvp, uvp, vvp)                                                                                                    \
-    do {                                                                                                                           \
-        (vvp)->tv_sec = (tvp)->tv_sec - (uvp)->tv_sec;                                                                             \
-        (vvp)->tv_usec = (tvp)->tv_usec - (uvp)->tv_usec;                                                                          \
-        if ((vvp)->tv_usec < 0) {                                                                                                  \
-            (vvp)->tv_sec--;                                                                                                       \
-            (vvp)->tv_usec += 1000000;                                                                                             \
-        }                                                                                                                          \
-    } while ((vvp)->tv_usec >= 1000000)
-#endif
-
 static ERL_NIF_TERM
 h2o_nif_slice_reduce_binary(ErlNifEnv *env, h2o_nif_slice_t *slice)
 {

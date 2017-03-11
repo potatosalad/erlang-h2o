@@ -12,6 +12,8 @@ C_SRC_ENV ?= $(C_SRC_DIR)/env.mk
 C_SRC_OUTPUT ?= $(BASEDIR)/priv/$(PROJECT)_nif
 C_SRC_TYPE ?= shared
 
+C_DEPS_DIR ?= $(BASEDIR)/c_deps
+
 # "erl" command.
 
 ERL = erl +A0 -noinput -boot start_clean
@@ -66,24 +68,25 @@ ifeq ($(PLATFORM),msys2)
 # We hardcode the compiler used on MSYS2. The default CC=cc does
 # not produce working code. The "gcc" MSYS2 package also doesn't.
 	CC = /mingw64/bin/gcc
-	CFLAGS ?= -O3 -std=c99 -finline-functions -fstack-protector -Wall -Wmissing-prototypes
+	CFLAGS ?= -O3 -std=c11 -finline-functions -fstack-protector -Wall -Wmissing-prototypes
 	CXXFLAGS ?= -O3 -finline-functions -fstack-protector -Wall
 else ifeq ($(PLATFORM),darwin)
 	CC ?= cc
-	CFLAGS ?= -O3 -std=c99 -arch x86_64 -fstack-protector -Wall -Wmissing-prototypes
+	CFLAGS ?= -O3 -std=c11 -arch x86_64 -fstack-protector -Wall -Wmissing-prototypes
+	# CFLAGS ?= -O3 -std=c11 -arch x86_64 -fstack-protector -Wall -Wmissing-prototypes -pedantic -Weverything -Wextra -Wno-unused-parameter -Wno-gnu
 	CXXFLAGS ?= -O3 -arch x86_64 -fstack-protector -Wall
 	LDFLAGS ?= -arch x86_64 -flat_namespace -undefined suppress
 else ifeq ($(PLATFORM),freebsd)
 	CC ?= cc
-	CFLAGS ?= -O3 -std=c99 -finline-functions -fstack-protector -Wall -Wmissing-prototypes
+	CFLAGS ?= -O3 -std=c11 -finline-functions -fstack-protector -Wall -Wmissing-prototypes
 	CXXFLAGS ?= -O3 -finline-functions -fstack-protector -Wall
 else ifeq ($(PLATFORM),linux)
 	CC ?= gcc
-	CFLAGS ?= -O3 -std=c99 -finline-functions -fstack-protector -Wall -Wmissing-prototypes
+	CFLAGS ?= -O3 -std=c11 -finline-functions -fstack-protector -Wall -Wmissing-prototypes
 	CXXFLAGS ?= -O3 -finline-functions -fstack-protector -Wall
 else ifeq ($(PLATFORM),solaris)
 	CC ?= cc
-	CFLAGS ?= -O3 -std=c99 -finline-functions -fstack-protector -Wall -Wmissing-prototypes
+	CFLAGS ?= -O3 -std=c11 -finline-functions -fstack-protector -Wall -Wmissing-prototypes
 	CXXFLAGS ?= -O3 -finline-functions -fstack-protector -Wall
 endif
 
@@ -94,23 +97,28 @@ endif
 
 CFLAGS += -I"$(ERTS_INCLUDE_DIR)" -I"$(ERL_INTERFACE_INCLUDE_DIR)" \
 	-DH2O_USE_LIBUV=0 \
+	-I"$(CK_INCLUDE_DIR)" \
 	-I"$(H2O_INCLUDE_DIR)" \
 	-I"$(KLIB_INCLUDE_DIR)" \
 	-I"$(LIBRESSL_INCLUDE_DIR)" \
 	-I"$(WSLAY_INCLUDE_DIR)" \
+	-I"$(WSLAY_LIBINCLUDE_DIR)" \
 	-I"$(YAML_INCLUDE_DIR)" \
 	-I"$(YOML_INCLUDE_DIR)"
 CXXFLAGS += -I"$(ERTS_INCLUDE_DIR)" -I"$(ERL_INTERFACE_INCLUDE_DIR)" \
 	-DH2O_USE_LIBUV=0 \
+	-I"$(CK_INCLUDE_DIR)" \
 	-I"$(H2O_INCLUDE_DIR)" \
 	-I"$(KLIB_INCLUDE_DIR)" \
 	-I"$(LIBRESSL_INCLUDE_DIR)" \
 	-I"$(WSLAY_INCLUDE_DIR)" \
+	-I"$(WSLAY_LIBINCLUDE_DIR)" \
 	-I"$(YAML_INCLUDE_DIR)" \
 	-I"$(YOML_INCLUDE_DIR)"
 
 # LDLIBS += -L"$(ERL_INTERFACE_LIB_DIR)" -lerl_interface -lei -lz "$(WSLAY_OUTPUT_FILE)" "$(H2O_OUTPUT_FILE)"
 LDLIBS += -L"$(ERL_INTERFACE_LIB_DIR)" -lerl_interface -lei -lz \
+	-L"$(CK_LIB_DIR)" -lck \
 	-L"$(H2O_LIB_DIR)" -lh2o-evloop \
 	-L"$(LIBRESSL_LIB_DIR)" -lssl -lcrypto \
 	-L"$(WSLAY_LIB_DIR)" -lwslay \
@@ -118,36 +126,48 @@ LDLIBS += -L"$(ERL_INTERFACE_LIB_DIR)" -lerl_interface -lei -lz \
 
 # Dependencies.
 
+CK_VSN ?= 0.6.0
+CK_GIT ?= git://github.com/concurrencykit/ck.git
+CK_SRC_DIR ?= $(C_DEPS_DIR)/ck
+CK_OUTPUT_FILE ?= $(CK_SRC_DIR)/src/libck.a
+CK_LIB_DIR ?= $(CK_SRC_DIR)/src
+CK_INCLUDE_DIR ?= $(CK_SRC_DIR)/include
+CK_MAKE_FILE ?= $(CK_SRC_DIR)/Makefile
+
 H2O_VSN ?= v2.2.0-beta1-20170228
-H2O_DIR ?= $(BASEDIR)/.h2o
 H2O_GIT ?= git://github.com/potatosalad/h2o.git
-H2O_OUTPUT_FILE ?= $(H2O_DIR)/libh2o-evloop.a
-H2O_LIB_DIR ?= $(H2O_DIR)
-H2O_INCLUDE_DIR ?= $(H2O_DIR)/include
-H2O_MAKE_FILE ?= $(H2O_DIR)/Makefile
+H2O_SRC_DIR ?= $(C_DEPS_DIR)/h2o
+H2O_BUILD_DIR ?= $(C_DEPS_DIR)/h2o-build
+H2O_OUTPUT_FILE ?= $(H2O_BUILD_DIR)/libh2o-evloop.a
+H2O_LIB_DIR ?= $(H2O_BUILD_DIR)
+H2O_INCLUDE_DIR ?= $(H2O_SRC_DIR)/include
+H2O_MAKE_FILE ?= $(H2O_BUILD_DIR)/Makefile
 
-KLIB_INCLUDE_DIR ?= $(H2O_DIR)/deps/klib
+KLIB_INCLUDE_DIR ?= $(H2O_SRC_DIR)/deps/klib
 
-LIBRESSL_LIB_DIR ?= $(H2O_DIR)/libressl-build/lib
-LIBRESSL_INCLUDE_DIR ?= $(H2O_DIR)/libressl-build/include
+LIBRESSL_LIB_DIR ?= $(H2O_BUILD_DIR)/libressl-build/lib
+LIBRESSL_INCLUDE_DIR ?= $(H2O_BUILD_DIR)/libressl-build/include
 
 WSLAY_VSN ?= 6abacc1da10344d7d7b13c21edc76fcdf587de0c
-WSLAY_DIR ?= $(BASEDIR)/.wslay
 WSLAY_GIT ?= git://github.com/tatsuhiro-t/wslay.git
-WSLAY_LIB_DIR ?= $(WSLAY_DIR)/lib
-WSLAY_INCLUDE_DIR ?= $(WSLAY_LIB_DIR)/includes
+WSLAY_SRC_DIR ?= $(C_DEPS_DIR)/wslay
+WSLAY_BUILD_DIR ?= $(C_DEPS_DIR)/wslay-build
+WSLAY_LIB_DIR ?= $(WSLAY_BUILD_DIR)/lib
+WSLAY_LIBINCLUDE_DIR ?= $(WSLAY_LIB_DIR)/includes
+WSLAY_INCLUDE_DIR ?= $(WSLAY_SRC_DIR)/lib/includes
 WSLAY_OUTPUT_FILE ?= $(WSLAY_LIB_DIR)/libwslay.a
-WSLAY_MAKE_FILE ?= $(WSLAY_DIR)/Makefile
+WSLAY_MAKE_FILE ?= $(WSLAY_BUILD_DIR)/Makefile
 
-YAML_DIR ?= $(H2O_DIR)/deps/yaml
-YAML_LIB_DIR ?= $(YAML_DIR)
-YAML_INCLUDE_DIR ?= $(YAML_DIR)/include
+YAML_SRC_DIR ?= $(H2O_SRC_DIR)/deps/yaml
+YAML_BUILD_DIR ?= $(C_DEPS_DIR)/yaml-build
+YAML_LIB_DIR ?= $(YAML_BUILD_DIR)
+YAML_INCLUDE_DIR ?= $(YAML_SRC_DIR)/include
 YAML_OUTPUT_FILE ?= $(YAML_LIB_DIR)/libyaml.a
-YAML_MAKE_FILE ?= $(YAML_DIR)/Makefile
+YAML_MAKE_FILE ?= $(YAML_BUILD_DIR)/Makefile
 
-YOML_INCLUDE_DIR ?= $(H2O_DIR)/deps/yoml
+YOML_INCLUDE_DIR ?= $(H2O_SRC_DIR)/deps/yoml
 
-ALL_DEPS_OUTPUT ?= $(H2O_OUTPUT_FILE) $(WSLAY_OUTPUT_FILE) $(YAML_OUTPUT_FILE)
+ALL_DEPS_OUTPUT ?= $(CK_OUTPUT_FILE) $(WSLAY_OUTPUT_FILE) $(H2O_OUTPUT_FILE) $(YAML_OUTPUT_FILE)
 
 # Verbosity.
 
@@ -202,64 +222,90 @@ deps::
 
 else
 
-deps:: $(WSLAY_OUTPUT_FILE) $(H2O_OUTPUT_FILE) $(YAML_OUTPUT_FILE)
+deps:: $(CK_OUTPUT_FILE) $(WSLAY_OUTPUT_FILE) $(H2O_OUTPUT_FILE) $(YAML_OUTPUT_FILE)
 
 endif
 
 test-build:: $(C_SRC_ENV) $(C_SRC_OUTPUT_FILE)
 
-$(H2O_DIR):
-	$(verbose) if [ ! -f $(H2O_DIR)/CMakeLists.txt ]; then \
-		git clone -n $(H2O_GIT) $(H2O_DIR) && \
-		(cd $(H2O_DIR) && git checkout -q $(H2O_VSN)); \
+$(C_DEPS_DIR):
+	$(verbose) mkdir -p $(C_DEPS_DIR)
+
+$(CK_SRC_DIR):
+	$(verbose) if [ ! -f $(CK_SRC_DIR)/configure ]; then \
+		git clone -n $(CK_GIT) $(CK_SRC_DIR) && \
+		(cd $(CK_SRC_DIR) && git checkout -q $(CK_VSN)); \
 	else \
 		true; \
 	fi
 
-$(H2O_MAKE_FILE): $(H2O_DIR)
+$(CK_MAKE_FILE): $(CK_SRC_DIR)
+	$(verbose) if [ ! -f $(CK_MAKE_FILE) ]; then \
+		(cd $(CK_SRC_DIR) \
+			&& env -i ./configure); \
+	else \
+		true; \
+	fi
+
+$(CK_OUTPUT_FILE): $(CK_MAKE_FILE)
+	$(MAKE) -C $(CK_SRC_DIR)
+	$(verbose) rm -f $(CK_SRC_DIR)/src/libck.so
+
+$(H2O_SRC_DIR):
+	$(verbose) if [ ! -f $(H2O_SRC_DIR)/CMakeLists.txt ]; then \
+		git clone -n $(H2O_GIT) $(H2O_SRC_DIR) && \
+		(cd $(H2O_SRC_DIR) && git checkout -q $(H2O_VSN)); \
+	else \
+		true; \
+	fi
+
+$(H2O_MAKE_FILE): $(H2O_SRC_DIR)
+	$(verbose) mkdir -p $(H2O_BUILD_DIR)
 	$(verbose) if [ ! -f $(H2O_MAKE_FILE) ]; then \
-		(cd $(H2O_DIR) \
+		(cd $(H2O_BUILD_DIR) \
 			&& cmake \
 			-DWSLAY_LIBRARIES="$(WSLAY_LIB_DIR)" \
 			-DWSLAY_INCLUDE_DIR="$(WSLAY_INCLUDE_DIR)" \
 			-DWITH_BUNDLED_SSL_FOR_LIBH2O=on \
 			-DWITH_MRUBY=off \
 			-DWITH_PICOTLS=on \
-			.); \
+			"$(H2O_SRC_DIR)"); \
 	else \
 		true; \
 	fi
 
 $(H2O_OUTPUT_FILE): $(H2O_MAKE_FILE)
-	$(MAKE) -C $(H2O_DIR) libh2o-evloop
+	$(MAKE) -C $(H2O_BUILD_DIR) libh2o-evloop
 
-$(WSLAY_DIR):
-	$(verbose) if [ ! -f $(WSLAY_DIR)/CMakeLists.txt ]; then \
-		git clone -n $(WSLAY_GIT) $(WSLAY_DIR) && \
-		(cd $(WSLAY_DIR) && git checkout -q $(WSLAY_VSN)); \
+$(WSLAY_SRC_DIR):
+	$(verbose) if [ ! -f $(WSLAY_SRC_DIR)/CMakeLists.txt ]; then \
+		git clone -n $(WSLAY_GIT) $(WSLAY_SRC_DIR) && \
+		(cd $(WSLAY_SRC_DIR) && git checkout -q $(WSLAY_VSN)); \
 	else \
 		true; \
 	fi
 
-$(WSLAY_MAKE_FILE): $(WSLAY_DIR)
+$(WSLAY_MAKE_FILE): $(WSLAY_SRC_DIR)
+	$(verbose) mkdir -p $(WSLAY_BUILD_DIR)
 	$(verbose) if [ ! -f $(WSLAY_MAKE_FILE) ]; then \
-		(cd $(WSLAY_DIR) && cmake .); \
+		(cd $(WSLAY_BUILD_DIR) && cmake "$(WSLAY_SRC_DIR)"); \
 	else \
 		true; \
 	fi
 
 $(WSLAY_OUTPUT_FILE): $(WSLAY_MAKE_FILE)
-	$(MAKE) -C $(WSLAY_DIR)
+	$(MAKE) -C $(WSLAY_BUILD_DIR)
 
-$(YAML_MAKE_FILE): $(H2O_DIR)
+$(YAML_MAKE_FILE): $(H2O_SRC_DIR)
+	$(verbose) mkdir -p $(YAML_BUILD_DIR)
 	$(verbose) if [ ! -f $(YAML_MAKE_FILE) ]; then \
-		(cd $(YAML_DIR) && cmake .); \
+		(cd $(YAML_BUILD_DIR) && cmake "$(YAML_SRC_DIR)"); \
 	else \
 		true; \
 	fi
 
 $(YAML_OUTPUT_FILE): $(YAML_MAKE_FILE)
-	$(MAKE) -C $(YAML_DIR)
+	$(MAKE) -C $(YAML_BUILD_DIR)
 
 $(C_SRC_OUTPUT_FILE): $(OBJECTS)
 	$(verbose) mkdir -p $(BASEDIR)/priv/
@@ -301,7 +347,7 @@ distclean-env:
 	$(gen_verbose) rm -f $(C_SRC_ENV)
 
 distclean-deps:
-	$(gen_verbose) rm -rf $(H2O_DIR) $(WSLAY_DIR)
+	$(gen_verbose) rm -rf $(C_DEPS_DIR)
 
 clang-format-all:
 	$(gen_verbose) clang-format -i *.c *.h h2o_nif/*.c.h

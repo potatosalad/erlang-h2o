@@ -7,22 +7,9 @@
 #include "globals.h"
 #include "config.h"
 #include "port.h"
+#include "ipc.h"
 
-#define H2O_NIF_SRV_S_OPEN 0
-#define H2O_NIF_SRV_S_IDLE 1
-#define H2O_NIF_SRV_S_LOOP 2
-
-// #define H2O_NIF_SRV_S_CLOSED       (0)
-// #define H2O_NIF_SRV_S_RUNNING     (H2O_DRV_PORT_F_OPEN)
-// #define H2O_NIF_SRV_S_LISTENING    (H2O_DRV_PORT_S_OPEN | H2O_DRV_PORT_F_LISTEN)
-// #define H2O_NIF_SRV_S_ACCEPTING    (H2O_DRV_PORT_S_LISTENING | H2O_DRV_PORT_F_ACCEPT)
-// #define H2O_NIF_SRV_S_MULTI_ACCEPTING  (H2O_DRV_PORT_S_ACCEPTING | H2O_DRV_PORT_F_MULTI)
-
-// #define H2O_DRV_PORT_IS_OPEN(p) \
-//     (((p)->state & H2O_DRV_PORT_F_OPEN) == H2O_DRV_PORT_F_OPEN)
-
-// #define H2O_DRV_PORT_IS_BUSY(p) \
-//     (((p)->state & H2O_DRV_PORT_F_BUSY) == H2O_DRV_PORT_F_BUSY)
+#include "resource.h"
 
 struct h2o_nif_srv_listen_s {
     h2o_nif_srv_thread_t *thread;
@@ -51,9 +38,12 @@ struct h2o_nif_srv_thread_s {
     h2o_nif_srv_thread_ctx_t ctx;
     h2o_multithread_receiver_t server_notifications;
     h2o_multithread_receiver_t memcached;
+    h2o_multithread_receiver_t erlang;
+    h2o_nif_ipc_queue_t *ipc_queue;
 };
 
 struct h2o_nif_server_s {
+    h2o_nif_resource_t resource;
     h2o_nif_config_t config;
     h2o_nif_port_t *port;
     // uint8_t status;
@@ -66,14 +56,51 @@ struct h2o_nif_server_s {
 };
 
 // extern h2o_nif_server_t *h2o_nif_server_alloc(ErlNifEnv *env);
-extern h2o_nif_server_t *h2o_nif_server_create(ErlNifEnv *env);
-extern int h2o_nif_server_get(ErlNifEnv *env, ERL_NIF_TERM id, h2o_nif_server_t **serverp);
+extern int h2o_nif_server_open(h2o_nif_port_t **portp);
+static int h2o_nif_server_get(ErlNifEnv *env, ERL_NIF_TERM id, h2o_nif_port_t **portp, h2o_nif_server_t **serverp);
+extern int h2o_nif_server_start(h2o_nif_port_t *port, h2o_nif_server_t *server);
+// extern int h2o_nif_server_get(ErlNifEnv *env, ERL_NIF_TERM id, h2o_nif_server_t **serverp);
 // extern void h2o_nif_server_release(h2o_nif_server_t *server);
 // extern int h2o_nif_server_init(h2o_nif_server_t *server);
-extern ERL_NIF_TERM h2o_nif_server_is_running(ErlNifEnv *env, const ERL_NIF_TERM server_term);
-extern void h2o_nif_server_on_close(ErlNifEnv *env, h2o_nif_port_t *port);
+// extern ERL_NIF_TERM h2o_nif_server_is_running(ErlNifEnv *env, const ERL_NIF_TERM server_term);
+// extern void h2o_nif_server_on_close(ErlNifEnv *env, h2o_nif_port_t *port);
 // extern void h2o_nif_server_dtor(ErlNifEnv *env, void *obj);
-extern int h2o_nif_server_start(ErlNifEnv *env, h2o_nif_server_t *server);
-extern h2o_iovec_t h2o_nif_server_on_extra_status(void *unused, h2o_globalconf_t *_conf, h2o_req_t *req);
+// extern int h2o_nif_server_start(ErlNifEnv *env, h2o_nif_server_t *server);
+// extern h2o_iovec_t h2o_nif_server_on_extra_status(void *unused, h2o_globalconf_t *_conf, h2o_req_t *req);
+
+inline int
+h2o_nif_server_get(ErlNifEnv *env, ERL_NIF_TERM id, h2o_nif_port_t **portp, h2o_nif_server_t **serverp)
+{
+    assert(portp != NULL);
+    assert(serverp != NULL);
+    h2o_nif_port_t *port = NULL;
+    *portp = NULL;
+    *serverp = NULL;
+    if (!h2o_nif_port_get(env, id, &port)) {
+        return 0;
+    }
+    if (port->type != H2O_NIF_PORT_TYPE_SERVER) {
+        (void)h2o_nif_port_release(port);
+        return 0;
+    }
+    *portp = port;
+    *serverp = (h2o_nif_server_t *)port->data;
+    return 1;
+}
+
+static int h2o_nif_server_keep(h2o_nif_server_t *server);
+static int h2o_nif_server_release(h2o_nif_server_t *server);
+
+inline int
+h2o_nif_server_keep(h2o_nif_server_t *server)
+{
+    return h2o_nif_resource_keep((void *)server);
+}
+
+inline int
+h2o_nif_server_release(h2o_nif_server_t *server)
+{
+    return h2o_nif_resource_release((void *)server);
+}
 
 #endif
