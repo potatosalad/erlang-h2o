@@ -38,9 +38,9 @@ init({Ref, Config}) ->
 		{h2o_server_canary,
 			{h2o_server_canary, start_link, [Ref, Config]},
 			permanent, infinity, worker, [h2o_server_canary]},
-		{h2o_handlers_sup,
-			{h2o_handlers_sup, start_link, [Ref]},
-			permanent, infinity, supervisor, [h2o_handlers_sup]}
+		{h2o_bindings_sup,
+			{h2o_bindings_sup, start_link, [Ref]},
+			permanent, infinity, supervisor, [h2o_bindings_sup]}
 	],
 	Restart = {rest_for_one, 1, 5},
 	{ok, {Restart, ChildSpecs}}.

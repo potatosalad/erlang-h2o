@@ -224,7 +224,7 @@ maybe_port_down(Key, Monitors) ->
 
 %% @private
 start_gc_timer(State=#state{gc_ref=undefined}) ->
-	GCRef = erlang:start_timer(5000, self(), gc_start),
+	GCRef = erlang:start_timer(timer:minutes(5), self(), gc_start),
 	State#state{gc_ref=GCRef};
 start_gc_timer(State) ->
 	start_gc_timer(stop_gc_timer(State)).

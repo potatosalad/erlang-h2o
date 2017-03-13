@@ -87,13 +87,13 @@ start(Port) ->
 % %%%-------------------------------------------------------------------
 
 %% @private
-receive_bindings([{Host, Path, Type, {Handler, Opts}, Ref} | Bindings], Acc) ->
+receive_bindings([{Host, Path, Type, Handler, Opts, SupType, NbAcceptors, Ref} | Bindings], Acc) ->
 	receive
 		{Ref, Port} ->
-			receive_bindings(Bindings, [{Host, Path, Type, {Handler, Opts}, Port} | Acc])
+			receive_bindings(Bindings, [{Host, Path, Type, Handler, Opts, SupType, NbAcceptors, Port} | Acc])
 	after
-		0 ->
-			erlang:error({badarg, [Host, Path, Type, {Handler, Opts}, Ref]})
+		1000 ->
+			erlang:error({badarg, [Host, Path, Type, Handler, Opts, SupType, NbAcceptors, Ref]})
 	end;
 receive_bindings([], Acc) ->
 	lists:reverse(Acc).

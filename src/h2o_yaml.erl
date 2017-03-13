@@ -175,17 +175,26 @@ encode_dict_path(List, _Level, _Acc, _Binding, _Bindings) ->
 	erlang:error({badarg, [List]}).
 
 %% @private
-encode_dict_path([{K0, {Handler, Opts}} | Dict], Indent, Level, Acc0, Binding, Bindings0)
+encode_dict_path([{K0, Value} | Dict], Indent, Level, Acc0, Binding, Bindings0)
 		when (K0 == <<"erlang.filter">>
 			orelse K0 == <<"erlang.handler">>
 			orelse K0 == <<"erlang.logger">>
 			orelse K0 == <<"erlang.websocket">>)
-		andalso is_atom(Handler) ->
+		andalso is_tuple(Value)
+		andalso (tuple_size(Value) == 2 orelse tuple_size(Value) == 3 orelse tuple_size(Value) == 4) ->
+	{Handler, Opts, SupType, NbAcceptors} = case Value of
+		{Handler0, Opts0} ->
+			{Handler0, Opts0, worker, 10};
+		{Handler0, Opts0, SupType0} when SupType0 == worker orelse SupType0 == supervisor ->
+			{Handler0, Opts0, SupType0, 10};
+		{Handler0, Opts0, SupType0, NbAcceptors0} when (SupType0 == worker orelse SupType0 == supervisor) andalso (is_integer(NbAcceptors0) andalso NbAcceptors0 > 0) ->
+			{Handler0, Opts0, SupType0, NbAcceptors0}
+	end,
 	{K1, Bindings1} = encode_scalar(K0, 0, [], Bindings0),
 	Ref = erlang:make_ref(),
 	{V1, Bindings2} = encode_scalar(Ref, 0, [], Bindings1),
 	Type = handler_type(K0),
-	Bindings3 = [list_to_tuple(lists:reverse([Ref, {Handler, Opts}, Type | Binding])) | Bindings2],
+	Bindings3 = [list_to_tuple(lists:reverse([Ref, NbAcceptors, SupType, Opts, Handler, Type | Binding])) | Bindings2],
 	Acc1 = [Acc0, $\n, Indent, K1, $:, $\s, V1],
 	encode_dict_path(Dict, Indent, Level, Acc1, Binding, Bindings3);
 encode_dict_path([{K, V} | Dict], Indent, Level, Acc0, Binding, Bindings0) ->

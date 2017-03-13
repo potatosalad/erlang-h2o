@@ -22,6 +22,6 @@ execute(Socket, Host, Path, Opts) ->
 	_ = Host,
 	_ = Path,
 	_ = Opts,
-	ok = h2o_req:reply(Socket, 200, #{<<"content-type">> => <<"text/plain">>}, <<"Plain Text">>),
+	ok = h2o_req:reply(Socket, 200, #{<<"content-type">> => <<"text/plain">>}, <<"Hello world!">>),
 	ok.
 	% exit(normal).

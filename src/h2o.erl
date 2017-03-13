@@ -33,7 +33,7 @@ example() ->
 			{<<"*">>, [
 				{<<"paths">>, [
 					{<<"/">>, [
-						{<<"erlang.handler">>, {toppage_handler, []}}
+						{<<"erlang.handler">>, {toppage_handler, [], worker, 10}}
 					]}
 				]}
 			]}

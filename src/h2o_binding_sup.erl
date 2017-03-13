@@ -6,14 +6,14 @@
 %%% @doc
 %%%
 %%% @end
-%%% Created :  11 Mar 2017 by Andrew Bennett <andrew@pixid.com>
+%%% Created :  13 Mar 2017 by Andrew Bennett <andrew@pixid.com>
 %%%-------------------------------------------------------------------
--module(h2o_handler_sup).
+-module(h2o_binding_sup).
 
 -behaviour(supervisor).
 
 %% API
--export([start_link/4]).
+-export([start_link/8]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -25,20 +25,20 @@
 %%% API functions
 %%%===================================================================
 
-start_link(Host, Path, {Handler, Opts}, Port) ->
-	supervisor:start_link(?MODULE, {Host, Path, {Handler, Opts}, Port}).
+start_link(Host, Path, Type, Handler, Opts, SupType, NbAcceptors, Port) ->
+	supervisor:start_link(?MODULE, {Host, Path, Type, Handler, Opts, SupType, NbAcceptors, Port}).
 
 %%%===================================================================
 %%% Supervisor callbacks
 %%%===================================================================
 
 %% @private
-init({Host, Path, {Handler, Opts}, Port}) ->
+init({Host, Path, Type, Handler, Opts, SupType, NbAcceptors, Port}) ->
 	ChildSpecs = [
-		{{handler, self(), N},
-			{h2o_acceptor, start_link, [Host, Path, h2o_handler, Handler, Opts, Port]},
+		{{acceptors, self(), N},
+			{h2o_acceptors_sup, start_link, [Host, Path, Type, Handler, Opts, SupType, Port]},
 			permanent, brutal_kill, supervisor, []}
-		|| N <- lists:seq(1, 10)
+		|| N <- lists:seq(1, NbAcceptors)
 	],
 	Restart = {one_for_one, 1, 5},
 	{ok, {Restart, ChildSpecs}}.

@@ -38,8 +38,6 @@
 
 #include "hm.h"
 
-// #include "getmonotonictime.h"
-
 #define MAX_PER_SLICE 20000 // 20 KB
 
 extern int erts_fprintf(FILE *, const char *, ...);
