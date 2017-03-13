@@ -488,6 +488,7 @@ h2o_nif_port_listen_dispatch(h2o_nif_port_t *port, h2o_nif_port_listen_t *port_l
     ErlNifEnv *env = NULL;
     ERL_NIF_TERM msg;
     int dispatched;
+    (void)gettimeofday(&port_listen->before_accept, NULL);
     do {
         dispatched = 0;
         (void)ck_spinlock_lock_eb(&port->spinlock_accept);
@@ -495,7 +496,7 @@ h2o_nif_port_listen_dispatch(h2o_nif_port_t *port, h2o_nif_port_listen_t *port_l
             (void)h2o_linklist_insert(&port->listen, &port_listen->_link);
             (void)ck_spinlock_unlock(&port->spinlock_accept);
             (void)atomic_fetch_add_explicit(&port->num_listen, 1, memory_order_relaxed);
-            // TRACE_F("h2o_nif_port_listen_dispatch B:%d\n", __LINE__);
+            TRACE_F("h2o_nif_port_listen_dispatch B:%d\n", __LINE__);
             return 1;
         }
         assert(h2o_linklist_is_empty(&port->listen));
@@ -513,6 +514,9 @@ h2o_nif_port_listen_dispatch(h2o_nif_port_t *port, h2o_nif_port_listen_t *port_l
         (void)enif_free_env(port_accept->msg_env);
         (void)enif_free(port_accept);
     } while (dispatched == 0);
+    if (dispatched) {
+
+    }
     // TRACE_F("h2o_nif_port_listen_dispatch B:%d\n", __LINE__);
     return dispatched;
 }

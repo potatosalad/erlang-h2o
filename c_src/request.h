@@ -41,6 +41,12 @@ struct h2o_nif_request_s {
     h2o_nif_port_t *port;
     h2o_nif_handler_t *handler;
     h2o_req_t *req;
+    struct timeval start;
+    struct timeval before_accept;
+    struct timeval after_accept;
+    struct timeval before_reply;
+    struct timeval start_reply;
+    struct timeval stop_reply;
 };
 
 extern int h2o_nif_request_accept_http(h2o_nif_port_t *parent, h2o_nif_handler_t *handler, h2o_req_t *req, h2o_nif_port_t **portp);

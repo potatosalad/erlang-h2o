@@ -13,6 +13,7 @@
 -include("h2o_port.hrl").
 
 %% Public API
+-export([info/0]).
 -export([add_header/3]).
 -export([delegate/1]).
 -export([send_inline/2]).
@@ -33,6 +34,13 @@
 %%%===================================================================
 %%% Public API
 %%%===================================================================
+
+info() ->
+	[begin
+		{Key, [begin
+			{Type, {Sec, (NSec div 1000) + (NSec rem 1000)}}
+		end || {Type, {Sec, NSec}} <- Stat]}
+	end || {Key, Stat} <- h2o_nif:request_info()].
 
 add_header(Request, Name, Value) ->
 	h2o_nif:request_add_header(Request, Name, Value).

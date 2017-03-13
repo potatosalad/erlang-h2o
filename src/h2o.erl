@@ -26,27 +26,49 @@ start() ->
 	application:ensure_all_started(?MODULE).
 
 example() ->
-	{ok, SPort} = h2o_server:open(),
-	% {ok, [{_, _, _, _, LPort}]} = h2o_server:setcfg(SPort, [
-	{ok, []} = h2o_server:setcfg(SPort, [
+	Config = [
 		{<<"listen">>, 8080},
-		% {<<"access-log">>, <<"./access.log">>},
-		% {<<"error-log">>, <<"./error.log">>},
-		% {<<"num-threads">>, 1},
+		{<<"num-threads">>, 1},
 		{<<"hosts">>, [
 			{<<"*">>, [
 				{<<"paths">>, [
 					{<<"/">>, [
-						{<<"fake.handler">>, 1}
-						% {<<"erlang.handler">>, {my_module, []}}%,
-						% {<<"file.dir">>, <<"/Users/andrew/Documents">>}
+						{<<"erlang.handler">>, {toppage_handler, []}}
 					]}
 				]}
 			]}
 		]}
-	]),
-	ok = h2o_server:start(SPort),
-	ok.
+	],
+	supervisor:start_child(h2o_sup, {example_server,
+		{h2o_server_sup, start_link, [example, Config]},
+		permanent, 5000, supervisor, [h2o_server_sup]}).
+	% {ok, SPort} = h2o_server:open(),
+	% {ok, [{_, _, _, _, LPort}]} = h2o_server:setcfg(SPort, [
+	% % {ok, []} = h2o_server:setcfg(SPort, [
+	% 	{<<"listen">>, 8080},
+	% 	% {<<"access-log">>, <<"./access.log">>},
+	% 	% {<<"error-log">>, <<"./error.log">>},
+	% 	{<<"num-threads">>, 1},
+	% 	{<<"hosts">>, [
+	% 		{<<"*">>, [
+	% 			{<<"paths">>, [
+	% 				{<<"/">>, [
+	% 					% {<<"fake.handler">>, 1}
+	% 					{<<"erlang.handler">>, {my_module, []}}%,
+	% 					% {<<"file.dir">>, <<"/Users/andrew/Documents">>}
+	% 				]}
+	% 			]}
+	% 		]}
+	% 	]}
+	% ]),
+	% ok = h2o_server:start(SPort),
+	% % ok.
+	% Loop = fun Loop() ->
+	% 	{ok, RPort} = h2o_port:accept(LPort),
+	% 	ok = h2o_req:reply(RPort, 200, #{<<"content-type">> => <<"text/plain">>}, <<"Plain Text">>),
+	% 	Loop()
+	% end,
+	% {ok, spawn(Loop)}.
 	% _ = application:ensure_all_started(ranch),
 	% ranch:start_listener(my_ref, 100, ranch_h2o, [{socket, LPort}], h2o_protocol, []).
 	% {ok, LPort}.
@@ -79,10 +101,15 @@ example() ->
 	% ok = h2o_server:start(SPort),
 	% Loop = fun Loop() ->
 	% 	{ok, RPort} = h2o_port:accept(LPort),
-	% 	ok = h2o_req:delegate(RPort),
+	% 	spawn(fun() ->
+	% 		ok = h2o_req:reply(RPort, 200, #{<<"content-type">> => <<"text/plain">>}, <<"Plain Text">>),
+	% 		exit(normal)
+	% 	end),
 	% 	Loop()
 	% end,
-	% {ok, spawn(Loop)}.
+	% {ok, [begin
+	% 	_ = I, spawn(Loop)
+	% end || I <- lists:seq(1, 100)]}.
 
 % server_open() ->
 % 	h2o_nif:server_open().

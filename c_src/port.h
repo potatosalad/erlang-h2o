@@ -86,6 +86,7 @@ typedef struct h2o_nif_port_accept_s {
 
 typedef struct h2o_nif_port_listen_s {
     h2o_linklist_t _link;
+    struct timeval before_accept;
 } h2o_nif_port_listen_t;
 
 typedef int h2o_nif_port_on_accept_t(h2o_nif_port_t *parent, h2o_nif_port_listen_t *listen, h2o_nif_port_t **portp);

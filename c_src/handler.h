@@ -31,6 +31,7 @@ struct h2o_nif_handler_s {
 typedef struct h2o_nif_handler_http_s {
     h2o_nif_port_listen_t super;
     h2o_req_t *req;
+    struct timeval start;
     h2o_nif_handler_t *handler;
 } h2o_nif_handler_http_t;
 

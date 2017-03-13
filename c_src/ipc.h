@@ -38,7 +38,7 @@ h2o_nif_ipc_send(h2o_nif_ipc_queue_t *queue, h2o_nif_ipc_callback_t *callback, v
     return h2o_nif_ipc_send_message(queue, message);
 }
 
-// extern _Atomic int foo;
+extern _Atomic int foo;
 
 inline int
 h2o_nif_ipc_send_message(h2o_nif_ipc_queue_t *queue, h2o_nif_ipc_message_t *message)
@@ -58,9 +58,14 @@ h2o_nif_ipc_send_message(h2o_nif_ipc_queue_t *queue, h2o_nif_ipc_message_t *mess
     if (atomic_flag_test_and_set_explicit(&queue->flag, memory_order_relaxed) == false) {
         // DEBUG_F("writing queue flag: %d\n", atomic_fetch_add(&foo, 1));
         while (write(queue->write, "", 1) == -1 && errno == EINTR) {
-            // DEBUG_F("waiting: %d\n", atomic_fetch_add(&foo, 1));
+            DEBUG_F("waiting: %d\n", atomic_fetch_add(&foo, 1));
             (void)ck_pr_stall();
         }
+    // } else {
+    //     while (write(queue->write, "", 1) == -1 && errno == EINTR) {
+    //         DEBUG_F("waiting: %d\n", atomic_fetch_add(&foo, 1));
+    //         (void)ck_pr_stall();
+    //     }
     }
     return 1;
 }

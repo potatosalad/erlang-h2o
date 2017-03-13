@@ -38,6 +38,8 @@
 
 #include "hm.h"
 
+// #include "getmonotonictime.h"
+
 #define MAX_PER_SLICE 20000 // 20 KB
 
 extern int erts_fprintf(FILE *, const char *, ...);
@@ -212,6 +214,7 @@ extern void h2o_nif_globals_unload(void);
 extern ERL_NIF_TERM ATOM_accept;
 extern ERL_NIF_TERM ATOM_active;
 extern ERL_NIF_TERM ATOM_already_started;
+extern ERL_NIF_TERM ATOM_avg;
 extern ERL_NIF_TERM ATOM_badcfg;
 extern ERL_NIF_TERM ATOM_children;
 extern ERL_NIF_TERM ATOM_closed;
@@ -227,7 +230,9 @@ extern ERL_NIF_TERM ATOM_h2o_port;
 extern ERL_NIF_TERM ATOM_h2o_port_closed;
 extern ERL_NIF_TERM ATOM_h2o_port_data;
 extern ERL_NIF_TERM ATOM_hm_stat;
+extern ERL_NIF_TERM ATOM_max;
 extern ERL_NIF_TERM ATOM_mem_info;
+extern ERL_NIF_TERM ATOM_min;
 extern ERL_NIF_TERM ATOM_n_buckets;
 extern ERL_NIF_TERM ATOM_nil;
 extern ERL_NIF_TERM ATOM_num_accept;

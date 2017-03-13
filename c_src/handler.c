@@ -151,6 +151,9 @@ on_accept_http(h2o_nif_port_t *parent, h2o_nif_port_listen_t *listen, h2o_nif_po
         *portp = child;
         return 0;
     }
+    ((h2o_nif_request_t *)child->data)->start = port_listen->start;
+    ((h2o_nif_request_t *)child->data)->before_accept = port_listen->super.before_accept;
+    (void)gettimeofday(&(((h2o_nif_request_t *)child->data)->after_accept), NULL);
     (void)h2o_nif_handler_release(handler);
     *portp = child;
     return 1;
@@ -161,12 +164,15 @@ on_req_http(h2o_handler_t *super, h2o_req_t *req)
 {
     // h2o_drv_handler_t *handler = (h2o_drv_handler_t *)_handler;
     TRACE_F("on_req_http:%s:%d\n", __FILE__, __LINE__);
+    struct timeval start;
+    (void)gettimeofday(&start, NULL);
     h2o_nif_handler_ctx_t *ctx = (h2o_nif_handler_ctx_t *)super;
     h2o_nif_handler_t *handler = ctx->handler;
     h2o_nif_port_t *port = handler->port;
     h2o_nif_handler_http_t *port_listen = (h2o_nif_handler_http_t *)h2o_mem_alloc_pool(&req->pool, sizeof(h2o_nif_handler_http_t));
     (void)memset(port_listen, 0, sizeof(h2o_nif_handler_http_t));
     port_listen->req = req;
+    port_listen->start = start;
     (void)h2o_nif_handler_keep(handler);
     port_listen->handler = handler;
     if (!h2o_nif_port_listen_dispatch(port, (h2o_nif_port_listen_t *)port_listen)) {

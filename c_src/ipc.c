@@ -38,7 +38,7 @@ static void on_read(h2o_socket_t *sock, const char *err);
 static void queue_cb(h2o_nif_ipc_queue_t *queue);
 static int set_cloexec(int fd);
 
-// _Atomic int foo = ATOMIC_VAR_INIT(0);
+_Atomic int foo = ATOMIC_VAR_INIT(0);
 
 h2o_nif_ipc_queue_t *
 h2o_nif_ipc_create_queue(h2o_loop_t *loop)
@@ -140,16 +140,34 @@ queue_cb(h2o_nif_ipc_queue_t *queue)
     // ck_fifo_spsc_entry_t *garbage = NULL;
     h2o_nif_ipc_message_t *message = NULL;
     int retval;
-    (void)atomic_flag_clear_explicit(&queue->flag, memory_order_relaxed);
+    int counter = 1;
     do {
-        retval = ck_fifo_mpmc_dequeue(&queue->fifo, (void *)&message, &garbage);
+        (void)atomic_flag_clear_explicit(&queue->flag, memory_order_relaxed);
+        // retval = ck_fifo_mpmc_dequeue(&queue->fifo, (void *)&message, &garbage);
+        retval = ck_fifo_mpmc_trydequeue(&queue->fifo, (void *)&message, &garbage);
         // retval = ck_fifo_spsc_dequeue(&queue->fifo, (void *)&message);
         if (retval) {
             (void)message->callback(message->data);
             (void)enif_free(message);
             // (void)free(garbage);
+        } else {
+            (void)ck_pr_stall();
+            if ((--counter) != 0) {
+                retval = 1;
+            }
         }
     } while (retval != 0);
+    // do {
+    //     (void)atomic_flag_clear_explicit(&queue->flag, memory_order_relaxed);
+    //     // retval = ck_fifo_mpmc_dequeue(&queue->fifo, (void *)&message, &garbage);
+    //     retval = ck_fifo_mpmc_trydequeue(&queue->fifo, (void *)&message, &garbage);
+    //     // retval = ck_fifo_spsc_dequeue(&queue->fifo, (void *)&message);
+    //     if (retval) {
+    //         (void)message->callback(message->data);
+    //         (void)enif_free(message);
+    //         // (void)free(garbage);
+    //     }
+    // } while (retval != 0);
     return;
 }
 

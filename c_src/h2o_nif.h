@@ -18,6 +18,19 @@
     } while ((vvp)->tv_usec >= 1000000)
 #endif
 
+#ifndef timespecsub
+#define timespecsub(tsp, usp, vsp) \
+    do { \
+        if (((tsp)->tv_nsec - (usp)->tv_nsec) < 0) { \
+            (vsp)->tv_sec = (tsp)->tv_sec - (usp)->tv_sec - 1; \
+            (vsp)->tv_nsec = (tsp)->tv_nsec - (usp)->tv_nsec + 1000000000; \
+        } else { \
+            (vsp)->tv_sec = (tsp)->tv_sec - (usp)->tv_sec; \
+            (vsp)->tv_nsec = (tsp)->tv_nsec - (usp)->tv_nsec; \
+        } \
+    } while (0)
+#endif
+
 #define MAX_PER_SLICE 20000 // 20 KB
 
 // static ERL_NIF_TERM h2o_nif_atom_check_1(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]);

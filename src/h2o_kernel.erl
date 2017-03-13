@@ -16,6 +16,10 @@
 -export([port_connect/1]).
 -export([port_connect/2]).
 -export([port_gc/0]).
+-export([server_canary_bindings/1]).
+-export([server_canary_pid/1]).
+-export([server_canary_port/1]).
+-export([server_canary_register/3]).
 
 %% gen_server callbacks
 -export([init/1]).
@@ -26,10 +30,12 @@
 -export([code_change/3]).
 
 %% Types
+-type canaries() :: [{{reference(), pid()}, any()}].
 -type monitors() :: [{{reference(), pid()}, h2o_port:ref()}].
 
 %% Records
 -record(state, {
+	canaries = [] :: canaries(),
 	monitors = [] :: monitors(),
 	gc_pid = undefined :: undefined | pid(),
 	gc_ref = undefined :: undefined | reference()
@@ -62,6 +68,19 @@ port_connect(Port, NewOwner) ->
 port_gc() ->
 	gen_server:call(?MODULE, port_gc).
 
+server_canary_bindings(Ref) ->
+	ets:lookup_element(?TAB, {canary, Ref}, 4).
+
+server_canary_pid(Ref) ->
+	ets:lookup_element(?TAB, {canary, Ref}, 2).
+
+server_canary_port(Ref) ->
+	ets:lookup_element(?TAB, {canary, Ref}, 3).
+
+server_canary_register(Ref, Server, Bindings) ->
+	true = gen_server:call(?MODULE, {server_canary_register, Ref, self(), Server, Bindings}),
+	ok.
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -69,8 +88,9 @@ port_gc() ->
 -spec init([])
 	-> ignore | {ok, #state{}} | {stop, any()}.
 init([]) ->
+	Canaries = [{{erlang:monitor(process, Pid), Pid}, Ref} || [Ref, Pid] <- ets:match(?TAB, {{canary, '$1'}, '$2', '_', '_'})],
 	Monitors = [{{erlang:monitor(process, Pid), Pid}, Port} || [Port, Pid] <- ets:match(?TAB, {{port, '$1'}, '$2'})],
-	State = #state{monitors=Monitors},
+	State = #state{canaries=Canaries, monitors=Monitors},
 	{ok, start_gc_timer(State)}.
 
 -spec handle_call(any(), {pid(), any()}, #state{})
@@ -103,6 +123,15 @@ handle_call(port_gc, _From, State=#state{monitors=Monitors, gc_pid=undefined}) -
 	{reply, true, stop_gc_timer(State#state{gc_pid=GCPid})};
 handle_call(port_gc, _From, State) ->
 	{reply, true, State};
+handle_call({server_canary_register, Ref, Pid, Server, Bindings}, _From, State=#state{canaries=Canaries}) ->
+	case ets:insert_new(?TAB, {{canary, Ref}, Pid, Server, Bindings}) of
+		true ->
+			MonitorRef = erlang:monitor(process, Pid),
+			Canaries2 = [{{MonitorRef, Pid}, Ref} | Canaries],
+			{reply, true, State#state{canaries=Canaries2}};
+		false ->
+			{reply, false, State}
+	end;
 handle_call(_Request, _From, State) ->
 	{reply, ignore, State}.
 
@@ -115,14 +144,17 @@ handle_cast(_Msg, State) ->
 
 -spec handle_info(any(), #state{})
 	-> {noreply, #state{}}.
-handle_info({'DOWN', MonitorRef, process, Pid, _}, State=#state{monitors=Monitors}) ->
-	case lists:keytake({MonitorRef, Pid}, 1, Monitors) of
-		{value, {_, Port}, Monitors2} ->
-			true = ets:delete(?TAB, {port, Port}),
-			ok = h2o_port:close(Port),
+handle_info({'DOWN', MonitorRef, process, Pid, _}, State=#state{canaries=Canaries, monitors=Monitors}) ->
+	case maybe_port_down({MonitorRef, Pid}, Monitors) of
+		{true, Monitors2} ->
 			{noreply, State#state{monitors=Monitors2}};
 		false ->
-			{noreply, State}
+			case maybe_canary_down({MonitorRef, Pid}, Canaries) of
+				{true, Canaries2} ->
+					{noreply, State#state{canaries=Canaries2}};
+				false ->
+					{noreply, State}
+			end
 	end;
 handle_info({h2o_gc_port, GCPid, Port}, State=#state{monitors=Monitors, gc_pid=GCPid}) ->
 	case lists:keytake(Port, 2, Monitors) of
@@ -168,6 +200,27 @@ disconnect([Monitor | Monitors], Port, Pid, Head) ->
 	disconnect(Monitors, Port, Pid, [Monitor | Head]);
 disconnect([], _Port, _Pid, Head) ->
 	lists:reverse(Head).
+
+%% @private
+maybe_canary_down(Key, Canaries) ->
+	case lists:keytake(Key, 1, Canaries) of
+		{value, {_, Ref}, Canaries2} ->
+			true = ets:delete(?TAB, {canary, Ref}),
+			{true, Canaries2};
+		false ->
+			false
+	end.
+
+%% @private
+maybe_port_down(Key, Monitors) ->
+	case lists:keytake(Key, 1, Monitors) of
+		{value, {_, Port}, Monitors2} ->
+			true = ets:delete(?TAB, {port, Port}),
+			ok = h2o_port:close(Port),
+			{true, Monitors2};
+		false ->
+			false
+	end.
 
 %% @private
 start_gc_timer(State=#state{gc_ref=undefined}) ->

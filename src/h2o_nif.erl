@@ -29,6 +29,7 @@
 %% h2o_nif/request.c.h
 -export([request_add_header/3]).
 -export([request_delegate/1]).
+-export([request_info/0]).
 -export([request_send_inline/2]).
 -export([request_set_status/2]).
 -export([request_reply/4]).
@@ -120,6 +121,9 @@ request_add_header(_Request, _Name, _Value) ->
 	erlang:nif_error({nif_not_loaded, ?MODULE}).
 
 request_delegate(_Request) ->
+	erlang:nif_error({nif_not_loaded, ?MODULE}).
+
+request_info() ->
 	erlang:nif_error({nif_not_loaded, ?MODULE}).
 
 request_send_inline(_Request, _Body) ->

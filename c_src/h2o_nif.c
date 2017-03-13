@@ -309,6 +309,7 @@
 ERL_NIF_TERM ATOM_accept;
 ERL_NIF_TERM ATOM_active;
 ERL_NIF_TERM ATOM_already_started;
+ERL_NIF_TERM ATOM_avg;
 ERL_NIF_TERM ATOM_badcfg;
 ERL_NIF_TERM ATOM_children;
 ERL_NIF_TERM ATOM_closed;
@@ -324,7 +325,9 @@ ERL_NIF_TERM ATOM_h2o_port;
 ERL_NIF_TERM ATOM_h2o_port_closed;
 ERL_NIF_TERM ATOM_h2o_port_data;
 ERL_NIF_TERM ATOM_hm_stat;
+ERL_NIF_TERM ATOM_max;
 ERL_NIF_TERM ATOM_mem_info;
+ERL_NIF_TERM ATOM_min;
 ERL_NIF_TERM ATOM_n_buckets;
 ERL_NIF_TERM ATOM_nil;
 ERL_NIF_TERM ATOM_num_accept;
@@ -365,6 +368,7 @@ h2o_nif_load(ErlNifEnv *env, void **priv_data, ERL_NIF_TERM load_info)
     ATOM(ATOM_accept, "accept");
     ATOM(ATOM_active, "active");
     ATOM(ATOM_already_started, "already_started");
+    ATOM(ATOM_avg, "avg");
     ATOM(ATOM_badcfg, "badcfg");
     ATOM(ATOM_children, "children");
     ATOM(ATOM_closed, "closed");
@@ -380,7 +384,9 @@ h2o_nif_load(ErlNifEnv *env, void **priv_data, ERL_NIF_TERM load_info)
     ATOM(ATOM_h2o_port_closed, "h2o_port_closed");
     ATOM(ATOM_h2o_port_data, "h2o_port_data");
     ATOM(ATOM_hm_stat, "hm_stat");
+    ATOM(ATOM_max, "max");
     ATOM(ATOM_mem_info, "mem_info");
+    ATOM(ATOM_min, "min");
     ATOM(ATOM_n_buckets, "n_buckets");
     ATOM(ATOM_nil, "nil");
     ATOM(ATOM_num_accept, "num_accept");
@@ -503,6 +509,7 @@ static ErlNifFunc h2o_nif_funcs[] = {
     // {"request_delegate", 1, h2o_nif_request_delegate_1},
     // {"request_send_inline", 2, h2o_nif_request_send_inline_2},
     // {"request_set_status", 2, h2o_nif_request_set_status_2},
+    {"request_info", 0, h2o_nif_request_info_0},
     {"request_reply", 4, h2o_nif_request_reply_4},
     {"server_open", 0, h2o_nif_server_open_0},
     {"server_getcfg", 1, h2o_nif_server_getcfg_1},
