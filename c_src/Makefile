@@ -134,7 +134,7 @@ CK_LIB_DIR ?= $(CK_SRC_DIR)/src
 CK_INCLUDE_DIR ?= $(CK_SRC_DIR)/include
 CK_MAKE_FILE ?= $(CK_SRC_DIR)/Makefile
 
-H2O_VSN ?= v2.2.0-beta1-20170228
+H2O_VSN ?= v2.2.0-beta2-20170315
 H2O_GIT ?= git://github.com/potatosalad/h2o.git
 H2O_SRC_DIR ?= $(C_DEPS_DIR)/h2o
 H2O_BUILD_DIR ?= $(C_DEPS_DIR)/h2o-build

@@ -29,11 +29,9 @@ start_link(Host, Path, Handler, Opts, Port) ->
 %%%===================================================================
 
 init(_Parent, Host, Path, Handler, Opts, Port) ->
-	case h2o_port:accept(Port) of
-		{ok, Socket} ->
-			ok = Handler:execute(Socket, Host, Path, Opts),
-			exit(normal)
-	end.
+	{ok, Socket} = h2o_port:accept(Port),
+	ok = Handler:execute(Socket, Host, Path, Opts),
+	exit(normal).
 
 %%%-------------------------------------------------------------------
 %%% Internal functions

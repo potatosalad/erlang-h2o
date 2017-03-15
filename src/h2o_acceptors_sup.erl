@@ -11,10 +11,10 @@
 -module(h2o_acceptors_sup).
 
 %% API
--export([start_link/7]).
+-export([start_link/8]).
 
 %% Supervisor callbacks
--export([init/8]).
+-export([init/9]).
 
 %% System callbacks
 -export([system_code_change/4]).
@@ -32,6 +32,8 @@
 	handler = undefined :: undefined | module(),
 	opts    = undefined :: undefined | any(),
 	suptype = undefined :: undefined | worker | supervisor,
+	max     = undefined :: undefined | pos_integer(),
+	count   = 0 :: pos_integer(),
 	port    = undefined :: undefined | h2o_port:ref()
 }).
 
@@ -39,20 +41,20 @@
 %%% API functions
 %%%===================================================================
 
-start_link(Host, Path, Type, Handler, Opts, SupType, Port) ->
-	proc_lib:start_link(?MODULE, init, [self(), Host, Path, Type, Handler, Opts, SupType, Port]).
+start_link(Host, Path, Type, Handler, Opts, SupType, NbAcceptors, Port) ->
+	proc_lib:start_link(?MODULE, init, [self(), Host, Path, Type, Handler, Opts, SupType, NbAcceptors, Port]).
 
 %%%===================================================================
 %%% Supervisor callbacks
 %%%===================================================================
 
 %% @private
-init(Parent, Host, Path, Type, Handler, Opts, SupType, Port) ->
+init(Parent, Host, Path, Type, Handler, Opts, SupType, NbAcceptors, Port) ->
 	_ = process_flag(trap_exit, true),
 	ok = proc_lib:init_ack(Parent, {ok, self()}),
 	before_loop(#state{parent=Parent, host=Host, path=Path,
 		type=Type, handler=Handler, opts=Opts, suptype=SupType,
-		port=Port}).
+		max=NbAcceptors, port=Port}).
 
 %%%===================================================================
 %%% System callbacks
@@ -79,53 +81,40 @@ system_terminate(Reason, _Parent, _Debug, Misc) ->
 %%%-------------------------------------------------------------------
 
 %% @private
+before_loop(State=#state{max=Max, count=Max}) ->
+	loop(State);
 before_loop(State=#state{host=Host, path=Path, type=Type,
-		handler=Handler, opts=Opts, port=Port}) ->
+		handler=Handler, opts=Opts, count=Count, port=Port}) ->
 	{ok, Pid} = Type:start_link(Host, Path, Handler, Opts, Port),
-	_ = put(Pid, started),
-	loop(State).
+	undefined = put(Pid, active),
+	before_loop(State#state{count=Count + 1}).
 
 %% @private
-loop(State=#state{parent=Parent, handler=Handler, suptype=SupType, port=Port}) ->
+loop(State=#state{parent=Parent, handler=Handler, suptype=SupType,
+		count=Count, port=Port}) ->
 	receive
-		% {accepted, Port, Pid} ->
-		% 	case put(Pid, accepted) of
-		% 		started ->
-		% 			before_loop(State);
-		% 		accepted ->
-		% 			loop(State);
-		% 		undefined ->
-		% 			before_loop(State)
-		% 	end;
 		{'EXIT', Parent, Reason} ->
 			terminate(State, Reason);
 		{'EXIT', Pid, Reason} ->
 			case erase(Pid) of
-				% accepted ->
-				% 	ok = report_error(State, Pid, Reason),
-				% 	loop(State);
-				started ->
+				active ->
 					ok = report_error(State, Pid, Reason),
-					before_loop(State);
+					before_loop(State#state{count=Count - 1});
 				undefined ->
 					loop(State)
 			end;
 		{system, From, Request} ->
 			sys:handle_system_msg(Request, From, Parent, ?MODULE, [], State);
 		{'$gen_call', {To, Tag}, which_children} ->
-			Children = [{Handler, Pid, SupType, [Handler]}
-				|| {Pid, Mode} <- get(),
-				Mode == active orelse Mode == removed],
+			Children = [{Handler, Pid, SupType, [Handler]} || {Pid, active} <- get()],
 			To ! {Tag, Children},
 			loop(State);
 		{'$gen_call', {To, Tag}, count_children} ->
-			NbChildren = length([1 || {_, Mode} <- get(),
-				Mode == active orelse Mode == removed]),
 			Counts = case SupType of
-				worker -> [{supervisors, 0}, {workers, NbChildren}];
-				supervisor -> [{supervisors, NbChildren}, {workers, 0}]
+				worker -> [{supervisors, 0}, {workers, Count}];
+				supervisor -> [{supervisors, Count}, {workers, 0}]
 			end,
-			Counts2 = [{specs, 1}, {active, NbChildren} | Counts],
+			Counts2 = [{specs, 1}, {active, Count} | Counts],
 			To ! {Tag, Counts2},
 			loop(State);
 		{'$gen_call', {To, Tag}, _Request} ->
@@ -137,6 +126,7 @@ loop(State=#state{parent=Parent, handler=Handler, suptype=SupType, port=Port}) -
 				[Port, Msg])
 	end.
 
+%% @private
 terminate(_State, Reason) ->
 	exit(Reason).
 

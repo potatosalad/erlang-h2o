@@ -45,9 +45,9 @@ init({Ref}) ->
 
 %% @private
 child_specs([{Host, Path, Type, Handler, Opts, SupType, NbAcceptors, Port} | Bindings], ChildSpecs) ->
-	ChildSpec = {{h2o_binding_sup, Port},
-		{h2o_binding_sup, start_link, [Host, Path, Type, Handler, Opts, SupType, NbAcceptors, Port]},
-		permanent, infinity, supervisor, [h2o_binding_sup]
+	ChildSpec = {{h2o_acceptors_sup, Port},
+		{h2o_acceptors_sup, start_link, [Host, Path, Type, Handler, Opts, SupType, NbAcceptors, Port]},
+		permanent, infinity, supervisor, [h2o_acceptors_sup]
 	},
 	child_specs(Bindings, [ChildSpec | ChildSpecs]);
 child_specs([], ChildSpecs) ->
