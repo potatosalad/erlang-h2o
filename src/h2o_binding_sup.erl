@@ -8,32 +8,40 @@
 %%% @end
 %%% Created :  13 Mar 2017 by Andrew Bennett <andrew@pixid.com>
 %%%-------------------------------------------------------------------
--module(h2o_handler).
+-module(h2o_binding_sup).
 
-%% Public API
--export([start_link/5]).
+-behaviour(supervisor).
 
-%% Private API
--export([init/6]).
+%% API
+-export([start_link/8]).
 
-%%%===================================================================
-%%% Public API
-%%%===================================================================
+%% Supervisor callbacks
+-export([init/1]).
 
-start_link(Host, Path, Handler, Opts, Port) ->
-	Pid = proc_lib:spawn_link(?MODULE, init, [self(), Host, Path, Handler, Opts, Port]),
-	{ok, Pid}.
+%% Helper macro for declaring children of supervisor
+-define(CHILD(I, Type), {I, {I, start_link, []}, permanent, 5000, Type, [I]}).
 
 %%%===================================================================
-%%% Private API
+%%% API functions
 %%%===================================================================
 
-init(_Parent, Host, Path, Handler, Opts, Port) ->
-	case h2o_port:accept(Port) of
-		{ok, Socket} ->
-			ok = Handler:execute(Socket, Host, Path, Opts),
-			exit(normal)
-	end.
+start_link(Host, Path, Type, Handler, Opts, SupType, NbAcceptors, Port) ->
+	supervisor:start_link(?MODULE, {Host, Path, Type, Handler, Opts, SupType, NbAcceptors, Port}).
+
+%%%===================================================================
+%%% Supervisor callbacks
+%%%===================================================================
+
+%% @private
+init({Host, Path, Type, Handler, Opts, SupType, NbAcceptors, Port}) ->
+	ChildSpecs = [
+		{{acceptors, self(), N},
+			{h2o_acceptors_sup, start_link, [Host, Path, Type, Handler, Opts, SupType, Port]},
+			permanent, brutal_kill, supervisor, []}
+		|| N <- lists:seq(1, NbAcceptors)
+	],
+	Restart = {one_for_one, 1, 5},
+	{ok, {Restart, ChildSpecs}}.
 
 %%%-------------------------------------------------------------------
 %%% Internal functions

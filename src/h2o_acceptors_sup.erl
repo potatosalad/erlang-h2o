@@ -11,10 +11,10 @@
 -module(h2o_acceptors_sup).
 
 %% API
--export([start_link/8]).
+-export([start_link/7]).
 
 %% Supervisor callbacks
--export([init/9]).
+-export([init/8]).
 
 %% System callbacks
 -export([system_code_change/4]).
@@ -32,8 +32,6 @@
 	handler = undefined :: undefined | module(),
 	opts    = undefined :: undefined | any(),
 	suptype = undefined :: undefined | worker | supervisor,
-	max     = undefined :: undefined | pos_integer(),
-	count   = 0 :: pos_integer(),
 	port    = undefined :: undefined | h2o_port:ref()
 }).
 
@@ -41,20 +39,20 @@
 %%% API functions
 %%%===================================================================
 
-start_link(Host, Path, Type, Handler, Opts, SupType, NbAcceptors, Port) ->
-	proc_lib:start_link(?MODULE, init, [self(), Host, Path, Type, Handler, Opts, SupType, NbAcceptors, Port]).
+start_link(Host, Path, Type, Handler, Opts, SupType, Port) ->
+	proc_lib:start_link(?MODULE, init, [self(), Host, Path, Type, Handler, Opts, SupType, Port]).
 
 %%%===================================================================
 %%% Supervisor callbacks
 %%%===================================================================
 
 %% @private
-init(Parent, Host, Path, Type, Handler, Opts, SupType, NbAcceptors, Port) ->
+init(Parent, Host, Path, Type, Handler, Opts, SupType, Port) ->
 	_ = process_flag(trap_exit, true),
 	ok = proc_lib:init_ack(Parent, {ok, self()}),
 	before_loop(#state{parent=Parent, host=Host, path=Path,
 		type=Type, handler=Handler, opts=Opts, suptype=SupType,
-		max=NbAcceptors, port=Port}).
+		port=Port}).
 
 %%%===================================================================
 %%% System callbacks
@@ -81,17 +79,14 @@ system_terminate(Reason, _Parent, _Debug, Misc) ->
 %%%-------------------------------------------------------------------
 
 %% @private
-before_loop(State=#state{max=Max, count=Max}) ->
-	loop(State);
 before_loop(State=#state{host=Host, path=Path, type=Type,
-		handler=Handler, opts=Opts, count=Count, port=Port}) ->
+		handler=Handler, opts=Opts, port=Port}) ->
 	{ok, Pid} = Type:start_link(Host, Path, Handler, Opts, Port),
-	undefined = put(Pid, active),
-	before_loop(State#state{count=Count + 1}).
+	_ = put(Pid, active),
+	loop(State).
 
 %% @private
-loop(State=#state{parent=Parent, handler=Handler, suptype=SupType,
-		count=Count, port=Port}) ->
+loop(State=#state{parent=Parent, handler=Handler, suptype=SupType, port=Port}) ->
 	receive
 		{'EXIT', Parent, Reason} ->
 			terminate(State, Reason);
@@ -99,7 +94,7 @@ loop(State=#state{parent=Parent, handler=Handler, suptype=SupType,
 			case erase(Pid) of
 				active ->
 					ok = report_error(State, Pid, Reason),
-					before_loop(State#state{count=Count - 1});
+					before_loop(State);
 				undefined ->
 					loop(State)
 			end;
@@ -110,11 +105,12 @@ loop(State=#state{parent=Parent, handler=Handler, suptype=SupType,
 			To ! {Tag, Children},
 			loop(State);
 		{'$gen_call', {To, Tag}, count_children} ->
+			NbChildren = length([1 || {_, active} <- get()]),
 			Counts = case SupType of
-				worker -> [{supervisors, 0}, {workers, Count}];
-				supervisor -> [{supervisors, Count}, {workers, 0}]
+				worker -> [{supervisors, 0}, {workers, NbChildren}];
+				supervisor -> [{supervisors, NbChildren}, {workers, 0}]
 			end,
-			Counts2 = [{specs, 1}, {active, Count} | Counts],
+			Counts2 = [{specs, 1}, {active, NbChildren} | Counts],
 			To ! {Tag, Counts2},
 			loop(State);
 		{'$gen_call', {To, Tag}, _Request} ->
@@ -126,7 +122,6 @@ loop(State=#state{parent=Parent, handler=Handler, suptype=SupType,
 				[Port, Msg])
 	end.
 
-%% @private
 terminate(_State, Reason) ->
 	exit(Reason).
 
