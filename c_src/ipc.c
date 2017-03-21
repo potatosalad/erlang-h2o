@@ -118,7 +118,8 @@ Exit:
 #endif
 }
 
-static void on_read(h2o_socket_t *sock, const char *err)
+static void
+on_read(h2o_socket_t *sock, const char *err)
 {
     if (err != NULL) {
         fprintf(stderr, "pipe error\n");

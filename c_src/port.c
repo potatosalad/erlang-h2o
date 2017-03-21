@@ -11,7 +11,8 @@ ErlNifResourceType *h2o_nif_port_resource_type = NULL;
 int
 h2o_nif_port_load(ErlNifEnv *env, h2o_nif_data_t *nif_data)
 {
-    h2o_nif_port_resource_type = enif_open_resource_type(env, NULL, "h2o_nif_port", h2o_nif_port_dtor, ERL_NIF_RT_CREATE | ERL_NIF_RT_TAKEOVER, NULL);
+    h2o_nif_port_resource_type =
+        enif_open_resource_type(env, NULL, "h2o_nif_port", h2o_nif_port_dtor, ERL_NIF_RT_CREATE | ERL_NIF_RT_TAKEOVER, NULL);
     return 0;
 }
 

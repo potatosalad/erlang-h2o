@@ -162,7 +162,8 @@ h2o_nif_port_is_open(h2o_nif_port_t *port)
 inline int
 h2o_nif_port_is_configured(h2o_nif_port_t *port)
 {
-    return ((atomic_load_explicit(&port->state, memory_order_relaxed) & H2O_NIF_PORT_STATE_CONFIGURED) == H2O_NIF_PORT_STATE_CONFIGURED);
+    return ((atomic_load_explicit(&port->state, memory_order_relaxed) & H2O_NIF_PORT_STATE_CONFIGURED) ==
+            H2O_NIF_PORT_STATE_CONFIGURED);
 }
 
 inline int
@@ -174,19 +175,22 @@ h2o_nif_port_is_started(h2o_nif_port_t *port)
 inline int
 h2o_nif_port_is_listening(h2o_nif_port_t *port)
 {
-    return ((atomic_load_explicit(&port->state, memory_order_relaxed) & H2O_NIF_PORT_STATE_LISTENING) == H2O_NIF_PORT_STATE_LISTENING);
+    return ((atomic_load_explicit(&port->state, memory_order_relaxed) & H2O_NIF_PORT_STATE_LISTENING) ==
+            H2O_NIF_PORT_STATE_LISTENING);
 }
 
 inline int
 h2o_nif_port_is_in_progress(h2o_nif_port_t *port)
 {
-    return ((atomic_load_explicit(&port->state, memory_order_relaxed) & H2O_NIF_PORT_STATE_IN_PROGRESS) == H2O_NIF_PORT_STATE_IN_PROGRESS);
+    return ((atomic_load_explicit(&port->state, memory_order_relaxed) & H2O_NIF_PORT_STATE_IN_PROGRESS) ==
+            H2O_NIF_PORT_STATE_IN_PROGRESS);
 }
 
 inline int
 h2o_nif_port_is_finalized(h2o_nif_port_t *port)
 {
-    return ((atomic_load_explicit(&port->state, memory_order_relaxed) & H2O_NIF_PORT_STATE_FINALIZED) == H2O_NIF_PORT_STATE_FINALIZED);
+    return ((atomic_load_explicit(&port->state, memory_order_relaxed) & H2O_NIF_PORT_STATE_FINALIZED) ==
+            H2O_NIF_PORT_STATE_FINALIZED);
 }
 
 inline ERL_NIF_TERM

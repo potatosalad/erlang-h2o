@@ -74,7 +74,8 @@ h2o_nif_logger_read_1(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
         while (node != anchor) {
             event = (h2o_nif_logger_event_t *)node;
             binary = enif_make_binary(env, &event->binary);
-            binary = enif_make_sub_binary(env, binary, sizeof(h2o_nif_logger_event_t), event->binary.size - sizeof(h2o_nif_logger_event_t));
+            binary = enif_make_sub_binary(env, binary, sizeof(h2o_nif_logger_event_t),
+                                          event->binary.size - sizeof(h2o_nif_logger_event_t));
             list = enif_make_list_cell(env, binary, list);
             node = node->prev;
             count++;
@@ -97,9 +98,9 @@ h2o_nif_logger_read_1(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     trap->node = trap->events.prev;
 
     ERL_NIF_TERM newargv[3];
-    newargv[0] = argv[0]; /* [0] logger */
+    newargv[0] = argv[0];                               /* [0] logger */
     newargv[1] = enif_make_resource(env, (void *)trap); /* [1] trap */
-    newargv[2] = enif_make_list(env, 0); /* [2] list */
+    newargv[2] = enif_make_list(env, 0);                /* [2] list */
     (void)enif_release_resource((void *)trap);
 
     return enif_schedule_nif(env, "logger_read", 0, h2o_nif_logger_read_trap_3, 3, newargv);
@@ -116,7 +117,8 @@ h2o_nif_logger_read_trap_3(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
     h2o_nif_logger_t *logger = NULL;
     h2o_nif_logger_read_1_t *trap = NULL;
-    if (argc != 3 || !h2o_nif_logger_get(env, argv[0], &logger) || !enif_get_resource(env, argv[1], h2o_nif_trap_resource_type, (void **)&trap) || !enif_is_list(env, argv[2])) {
+    if (argc != 3 || !h2o_nif_logger_get(env, argv[0], &logger) ||
+        !enif_get_resource(env, argv[1], h2o_nif_trap_resource_type, (void **)&trap) || !enif_is_list(env, argv[2])) {
         return enif_make_badarg(env);
     }
 
@@ -163,7 +165,8 @@ h2o_nif_logger_read_trap_3(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
         while (node != anchor && (count < slice)) {
             event = (h2o_nif_logger_event_t *)node;
             binary = enif_make_binary(env, &event->binary);
-            binary = enif_make_sub_binary(env, binary, sizeof(h2o_nif_logger_event_t), event->binary.size - sizeof(h2o_nif_logger_event_t));
+            binary = enif_make_sub_binary(env, binary, sizeof(h2o_nif_logger_event_t),
+                                          event->binary.size - sizeof(h2o_nif_logger_event_t));
             list = enif_make_list_cell(env, binary, list);
             node = node->prev;
             count++;
@@ -205,7 +208,7 @@ h2o_nif_logger_read_trap_3(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
             ERL_NIF_TERM newargv[3];
             newargv[0] = argv[0]; /* [0] logger */
             newargv[1] = argv[1]; /* [1] trap */
-            newargv[2] = list; /* [2] list */
+            newargv[2] = list;    /* [2] list */
             return enif_schedule_nif(env, "logger_read", 0, h2o_nif_logger_read_trap_3, argc, newargv);
         }
         end += max_per_slice;

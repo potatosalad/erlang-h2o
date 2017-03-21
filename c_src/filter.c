@@ -22,7 +22,8 @@ static int h2o_nif_filter_open(h2o_nif_server_t *server, h2o_pathconf_t *pathcon
 static ERL_NIF_TERM h2o_nif_filter_on_close(ErlNifEnv *env, h2o_nif_port_t *port, int is_direct_call);
 static void h2o_nif_filter_dtor(ErlNifEnv *env, h2o_nif_port_t *port);
 
-static int h2o_nif_filter_event_open(h2o_nif_filter_t *filter, h2o_req_t *req, h2o_ostream_t **slot, h2o_nif_filter_event_t **eventp);
+static int h2o_nif_filter_event_open(h2o_nif_filter_t *filter, h2o_req_t *req, h2o_ostream_t **slot,
+                                     h2o_nif_filter_event_t **eventp);
 static ERL_NIF_TERM h2o_nif_filter_event_on_close(ErlNifEnv *env, h2o_nif_port_t *port, int is_direct_call);
 static void h2o_nif_filter_event_dtor(ErlNifEnv *env, h2o_nif_port_t *port);
 
@@ -69,9 +70,11 @@ h2o_nif_filter_on_close(ErlNifEnv *env, h2o_nif_port_t *port, int is_direct_call
     TRACE_F("h2o_nif_filter_on_close:%s:%d\n", __FILE__, __LINE__);
     assert(port->type == H2O_NIF_PORT_TYPE_FILTER);
     h2o_nif_filter_t *filter = (h2o_nif_filter_t *)port;
-    h2o_nif_filter_ctx_t *ctx = (h2o_nif_filter_ctx_t *)atomic_exchange_explicit(&filter->ctx, (uintptr_t)NULL, memory_order_relaxed);
+    h2o_nif_filter_ctx_t *ctx =
+        (h2o_nif_filter_ctx_t *)atomic_exchange_explicit(&filter->ctx, (uintptr_t)NULL, memory_order_relaxed);
     if (ctx != NULL) {
-        if (atomic_compare_exchange_weak_explicit(&ctx->filter, (uintptr_t *)&filter, (uintptr_t)NULL, memory_order_relaxed, memory_order_relaxed)) {
+        if (atomic_compare_exchange_weak_explicit(&ctx->filter, (uintptr_t *)&filter, (uintptr_t)NULL, memory_order_relaxed,
+                                                  memory_order_relaxed)) {
             (void)h2o_nif_port_release(&filter->super);
         }
     }
@@ -165,7 +168,8 @@ on_dispose(h2o_filter_t *super)
     h2o_nif_filter_ctx_t *ctx = (h2o_nif_filter_ctx_t *)super;
     h2o_nif_filter_t *filter = (h2o_nif_filter_t *)atomic_exchange_explicit(&ctx->filter, (uintptr_t)NULL, memory_order_relaxed);
     if (filter != NULL) {
-        (void)atomic_compare_exchange_weak_explicit(&ctx->filter, (uintptr_t *)&filter, (uintptr_t)NULL, memory_order_relaxed, memory_order_relaxed);
+        (void)atomic_compare_exchange_weak_explicit(&ctx->filter, (uintptr_t *)&filter, (uintptr_t)NULL, memory_order_relaxed,
+                                                    memory_order_relaxed);
         (void)h2o_nif_port_release(&filter->super);
     }
 }

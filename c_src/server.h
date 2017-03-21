@@ -49,9 +49,12 @@ struct h2o_nif_server_s {
     struct {
         /* unused buffers exist to avoid false sharing of the cache line */
         char _unused1_avoir_false_sharing[32];
-        _Atomic int _num_connections; /* number of currently handled incoming connections, should use atomic functions to update the value */
+        _Atomic int
+            _num_connections; /* number of currently handled incoming connections, should use atomic functions to update the value
+                                 */
         char _unused2_avoir_false_sharing[32];
-        _Atomic unsigned long _num_sessions; /* total number of opened incoming connections, should use atomic functions to update the value */
+        _Atomic unsigned long
+            _num_sessions; /* total number of opened incoming connections, should use atomic functions to update the value */
         char _unused3_avoir_false_sharing[32];
     } state;
 };

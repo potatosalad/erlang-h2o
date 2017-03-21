@@ -77,9 +77,11 @@ h2o_nif_handler_on_close(ErlNifEnv *env, h2o_nif_port_t *port, int is_direct_cal
     TRACE_F("h2o_nif_handler_on_close:%s:%d\n", __FILE__, __LINE__);
     assert(port->type == H2O_NIF_PORT_TYPE_HANDLER);
     h2o_nif_handler_t *handler = (h2o_nif_handler_t *)port;
-    h2o_nif_handler_ctx_t *ctx = (h2o_nif_handler_ctx_t *)atomic_exchange_explicit(&handler->ctx, (uintptr_t)NULL, memory_order_relaxed);
+    h2o_nif_handler_ctx_t *ctx =
+        (h2o_nif_handler_ctx_t *)atomic_exchange_explicit(&handler->ctx, (uintptr_t)NULL, memory_order_relaxed);
     if (ctx != NULL) {
-        if (atomic_compare_exchange_weak_explicit(&ctx->handler, (uintptr_t *)&handler, (uintptr_t)NULL, memory_order_relaxed, memory_order_relaxed)) {
+        if (atomic_compare_exchange_weak_explicit(&ctx->handler, (uintptr_t *)&handler, (uintptr_t)NULL, memory_order_relaxed,
+                                                  memory_order_relaxed)) {
             (void)h2o_nif_port_release(&handler->super);
         }
     }
@@ -176,9 +178,11 @@ static void
 on_dispose(h2o_handler_t *super)
 {
     h2o_nif_handler_ctx_t *ctx = (h2o_nif_handler_ctx_t *)super;
-    h2o_nif_handler_t *handler = (h2o_nif_handler_t *)atomic_exchange_explicit(&ctx->handler, (uintptr_t)NULL, memory_order_relaxed);
+    h2o_nif_handler_t *handler =
+        (h2o_nif_handler_t *)atomic_exchange_explicit(&ctx->handler, (uintptr_t)NULL, memory_order_relaxed);
     if (handler != NULL) {
-        (void)atomic_compare_exchange_weak_explicit(&ctx->handler, (uintptr_t *)&handler, (uintptr_t)NULL, memory_order_relaxed, memory_order_relaxed);
+        (void)atomic_compare_exchange_weak_explicit(&ctx->handler, (uintptr_t *)&handler, (uintptr_t)NULL, memory_order_relaxed,
+                                                    memory_order_relaxed);
         (void)h2o_nif_port_release(&handler->super);
     }
 }

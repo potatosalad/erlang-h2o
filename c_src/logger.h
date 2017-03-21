@@ -59,6 +59,7 @@ h2o_nif_logger_get(ErlNifEnv *env, ERL_NIF_TERM port_term, h2o_nif_logger_t **lo
 
 /* Logger Functions */
 
-extern h2o_nif_logger_ctx_t *h2o_nif_logger_register(ErlNifEnv *env, h2o_nif_server_t *server, h2o_pathconf_t *pathconf, h2o_nif_logger_handle_t *lh);
+extern h2o_nif_logger_ctx_t *h2o_nif_logger_register(ErlNifEnv *env, h2o_nif_server_t *server, h2o_pathconf_t *pathconf,
+                                                     h2o_nif_logger_handle_t *lh);
 
 #endif

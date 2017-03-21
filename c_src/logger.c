@@ -18,7 +18,8 @@ struct h2o_nif_logger_data_s {
 
 /* Port Functions */
 
-static int h2o_nif_logger_open(h2o_nif_server_t *server, h2o_pathconf_t *pathconf, h2o_nif_logger_handle_t *lh, h2o_nif_logger_t **loggerp);
+static int h2o_nif_logger_open(h2o_nif_server_t *server, h2o_pathconf_t *pathconf, h2o_nif_logger_handle_t *lh,
+                               h2o_nif_logger_t **loggerp);
 static ERL_NIF_TERM h2o_nif_logger_on_close(ErlNifEnv *env, h2o_nif_port_t *port, int is_direct_call);
 static void h2o_nif_logger_dtor(ErlNifEnv *env, h2o_nif_port_t *port);
 
@@ -67,9 +68,11 @@ h2o_nif_logger_on_close(ErlNifEnv *env, h2o_nif_port_t *port, int is_direct_call
     TRACE_F("h2o_nif_logger_on_close:%s:%d\n", __FILE__, __LINE__);
     assert(port->type == H2O_NIF_PORT_TYPE_LOGGER);
     h2o_nif_logger_t *logger = (h2o_nif_logger_t *)port;
-    h2o_nif_logger_ctx_t *ctx = (h2o_nif_logger_ctx_t *)atomic_exchange_explicit(&logger->ctx, (uintptr_t)NULL, memory_order_relaxed);
+    h2o_nif_logger_ctx_t *ctx =
+        (h2o_nif_logger_ctx_t *)atomic_exchange_explicit(&logger->ctx, (uintptr_t)NULL, memory_order_relaxed);
     if (ctx != NULL) {
-        if (atomic_compare_exchange_weak_explicit(&ctx->logger, (uintptr_t *)&logger, (uintptr_t)NULL, memory_order_relaxed, memory_order_relaxed)) {
+        if (atomic_compare_exchange_weak_explicit(&ctx->logger, (uintptr_t *)&logger, (uintptr_t)NULL, memory_order_relaxed,
+                                                  memory_order_relaxed)) {
             (void)h2o_nif_port_release(&logger->super);
         }
     }
@@ -129,7 +132,8 @@ on_dispose(h2o_logger_t *super)
     h2o_nif_logger_ctx_t *ctx = (h2o_nif_logger_ctx_t *)super;
     h2o_nif_logger_t *logger = (h2o_nif_logger_t *)atomic_exchange_explicit(&ctx->logger, (uintptr_t)NULL, memory_order_relaxed);
     if (logger != NULL) {
-        (void)atomic_compare_exchange_weak_explicit(&ctx->logger, (uintptr_t *)&logger, (uintptr_t)NULL, memory_order_relaxed, memory_order_relaxed);
+        (void)atomic_compare_exchange_weak_explicit(&ctx->logger, (uintptr_t *)&logger, (uintptr_t)NULL, memory_order_relaxed,
+                                                    memory_order_relaxed);
         (void)h2o_nif_port_release(&logger->super);
     }
 }

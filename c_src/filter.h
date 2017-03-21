@@ -73,6 +73,7 @@ h2o_nif_filter_event_get(ErlNifEnv *env, ERL_NIF_TERM port_term, h2o_nif_filter_
 
 /* Filter Functions */
 
-extern h2o_nif_filter_ctx_t *h2o_nif_filter_register(ErlNifEnv *env, h2o_nif_server_t *server, h2o_pathconf_t *pathconf, h2o_nif_filter_handle_t *fh);
+extern h2o_nif_filter_ctx_t *h2o_nif_filter_register(ErlNifEnv *env, h2o_nif_server_t *server, h2o_pathconf_t *pathconf,
+                                                     h2o_nif_filter_handle_t *fh);
 
 #endif

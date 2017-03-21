@@ -97,9 +97,9 @@ h2o_nif_handler_read_1(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     trap->node = trap->events.prev;
 
     ERL_NIF_TERM newargv[3];
-    newargv[0] = argv[0]; /* [0] handler */
+    newargv[0] = argv[0];                               /* [0] handler */
     newargv[1] = enif_make_resource(env, (void *)trap); /* [1] trap */
-    newargv[2] = enif_make_list(env, 0); /* [2] list */
+    newargv[2] = enif_make_list(env, 0);                /* [2] list */
     (void)enif_release_resource((void *)trap);
 
     return enif_schedule_nif(env, "handler_read", 0, h2o_nif_handler_read_trap_3, 3, newargv);
@@ -110,7 +110,8 @@ h2o_nif_handler_read_trap_3(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
     h2o_nif_handler_t *handler = NULL;
     h2o_nif_handler_read_1_t *trap = NULL;
-    if (argc != 3 || !h2o_nif_handler_get(env, argv[0], &handler) || !enif_get_resource(env, argv[1], h2o_nif_trap_resource_type, (void **)&trap) || !enif_is_list(env, argv[2])) {
+    if (argc != 3 || !h2o_nif_handler_get(env, argv[0], &handler) ||
+        !enif_get_resource(env, argv[1], h2o_nif_trap_resource_type, (void **)&trap) || !enif_is_list(env, argv[2])) {
         return enif_make_badarg(env);
     }
 
@@ -194,7 +195,7 @@ h2o_nif_handler_read_trap_3(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
             ERL_NIF_TERM newargv[3];
             newargv[0] = argv[0]; /* [0] handler */
             newargv[1] = argv[1]; /* [1] trap */
-            newargv[2] = list; /* [2] list */
+            newargv[2] = list;    /* [2] list */
             return enif_schedule_nif(env, "handler_read", 0, h2o_nif_handler_read_trap_3, argc, newargv);
         }
         end += max_per_slice;
@@ -233,7 +234,8 @@ __h2o_nif_handler_event_reply_4(h2o_nif_handler_event_t *event)
         assert(enif_map_iterator_create(env, headers, &iter, ERL_NIF_MAP_ITERATOR_FIRST));
         while (enif_map_iterator_get_pair(env, &iter, &key, &value)) {
             if (enif_inspect_iolist_as_binary(env, key, &name_bin) && enif_inspect_iolist_as_binary(env, value, &value_bin)) {
-                (void)h2o_add_header_by_str(&req->pool, &req->res.headers, (const char *)name_bin.data, name_bin.size, 1, NULL, (const char *)value_bin.data, value_bin.size);
+                (void)h2o_add_header_by_str(&req->pool, &req->res.headers, (const char *)name_bin.data, name_bin.size, 1, NULL,
+                                            (const char *)value_bin.data, value_bin.size);
             }
             (void)enif_map_iterator_next(env, &iter);
         }
@@ -256,8 +258,8 @@ h2o_nif_handler_event_reply_4(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[
     unsigned int status;
     ERL_NIF_TERM headers = argv[2];
     ErlNifBinary body;
-    if (!enif_get_uint(env, argv[1], &status) || status < 100 || status > 599 ||
-        !enif_is_map(env, headers) || !enif_inspect_iolist_as_binary(env, argv[3], &body)) {
+    if (!enif_get_uint(env, argv[1], &status) || status < 100 || status > 599 || !enif_is_map(env, headers) ||
+        !enif_inspect_iolist_as_binary(env, argv[3], &body)) {
         return enif_make_badarg(env);
     }
     if (!h2o_nif_port_set_finalized(&event->super)) {
@@ -344,8 +346,8 @@ h2o_nif_handler_event_reply_batch_1(ErlNifEnv *env, int argc, const ERL_NIF_TERM
             continue;
         }
         headers = array[2];
-        if (!enif_get_uint(env, array[1], &status) || status < 100 || status > 599 ||
-            !enif_is_map(env, headers) || !enif_inspect_iolist_as_binary(env, array[3], &body)) {
+        if (!enif_get_uint(env, array[1], &status) || status < 100 || status > 599 || !enif_is_map(env, headers) ||
+            !enif_inspect_iolist_as_binary(env, array[3], &body)) {
             continue;
         }
         if (!h2o_nif_port_set_finalized(&event->super)) {
@@ -440,8 +442,8 @@ h2o_nif_handler_event_reply_multi_4(ErlNifEnv *env, int argc, const ERL_NIF_TERM
     unsigned int status;
     ERL_NIF_TERM headers = argv[2];
     ErlNifBinary body;
-    if (!enif_get_uint(env, argv[1], &status) || status < 100 || status > 599 ||
-        !enif_is_map(env, headers) || !enif_inspect_iolist_as_binary(env, argv[3], &body)) {
+    if (!enif_get_uint(env, argv[1], &status) || status < 100 || status > 599 || !enif_is_map(env, headers) ||
+        !enif_inspect_iolist_as_binary(env, argv[3], &body)) {
         return enif_make_badarg(env);
     }
     ERL_NIF_TERM list = argv[0];
