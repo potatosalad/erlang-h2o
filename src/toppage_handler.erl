@@ -9,19 +9,20 @@
 %%% Created :  11 Mar 2017 by Andrew Bennett <andrew@pixid.com>
 %%%-------------------------------------------------------------------
 -module(toppage_handler).
+-behaviour(h2o_handler).
 
 %% API
--export([execute/4]).
+-export([on_req/4]).
 
 %%%===================================================================
 %%% API functions
 %%%===================================================================
 
-execute(Socket, Host, Path, Opts) ->
+on_req(Req, _Host, _Path, _Opts) ->
 	% io:format("~p, ~p, ~p, ~p", [Socket, Host, Path, Opts]),
-	_ = Host,
-	_ = Path,
-	_ = Opts,
-	ok = h2o_req:reply(Socket, 200, #{<<"content-type">> => <<"text/plain">>}, <<"Hello world!">>),
+	% _ = Host,
+	% _ = Path,
+	% _ = Opts,
+	ok = h2o_req:reply(Req, 200, #{<<"content-type">> => <<"text/plain">>}, <<"Hello world!">>),
 	ok.
 	% exit(normal).

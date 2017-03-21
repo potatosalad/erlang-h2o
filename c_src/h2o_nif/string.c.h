@@ -1,6 +1,10 @@
 // -*- mode: c; tab-width: 4; indent-tabs-mode: nil; st-rulers: [132] -*-
 // vim: ts=4 sw=4 ft=c et
 
+#include "../slice.h"
+
+/* fun h2o_nif:string_tolower/1 */
+
 static ERL_NIF_TERM
 h2o_nif_string_tolower_1(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
@@ -14,10 +18,12 @@ h2o_nif_string_tolower_1(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     return enif_make_int(env, h2o_tolower(ch));
 }
 
+/* fun h2o_nif:string_strtolower/1 */
+
 static size_t
 h2o_nif_string_strtolower_1_map(ErlNifEnv *env, h2o_nif_slice_t *slice, size_t offset, size_t length)
 {
-    (void)h2o_strtolower((char *)(slice->out.data + offset), length);
+    (void)h2o_strtolower((char *)(slice->out.binary.data + offset), length);
     return (offset + length);
 }
 
@@ -38,16 +44,21 @@ h2o_nif_string_strtolower_1(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
         return out;
     }
 
-    h2o_nif_slice_t *slice =
-        h2o_nif_slice_create(env, "string_strtolower", in.size, 0, h2o_nif_string_strtolower_1_map, NULL, NULL);
-    if (!enif_alloc_binary(in.size, &slice->out)) {
+    h2o_nif_slice_t *slice = NULL;
+    if (!h2o_nif_slice_create("string_strtolower", h2o_nif_string_strtolower_1_map, NULL, &slice)) {
+        return enif_make_badarg(env);
+    }
+    slice->in.length = in.size;
+    if (!enif_alloc_binary(in.size, &slice->out.binary)) {
         (void)h2o_nif_slice_release(slice);
         return enif_make_badarg(env);
     }
-    (void)memcpy(slice->out.data, in.data, in.size);
+    (void)memcpy(slice->out.binary.data, in.data, in.size);
 
     return h2o_nif_slice_schedule(env, slice);
 }
+
+/* fun h2o_nif:string_toupper/1 */
 
 static ERL_NIF_TERM
 h2o_nif_string_toupper_1(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
@@ -62,10 +73,12 @@ h2o_nif_string_toupper_1(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     return enif_make_int(env, h2o_toupper(ch));
 }
 
+/* fun h2o_nif:string_strtoupper/1 */
+
 static size_t
 h2o_nif_string_strtoupper_1_map(ErlNifEnv *env, h2o_nif_slice_t *slice, size_t offset, size_t length)
 {
-    (void)h2o_strtoupper((char *)(slice->out.data + offset), length);
+    (void)h2o_strtoupper((char *)(slice->out.binary.data + offset), length);
     return (offset + length);
 }
 
@@ -86,30 +99,35 @@ h2o_nif_string_strtoupper_1(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
         return out;
     }
 
-    h2o_nif_slice_t *slice =
-        h2o_nif_slice_create(env, "string_strtoupper", in.size, 0, h2o_nif_string_strtoupper_1_map, NULL, NULL);
-    if (!enif_alloc_binary(in.size, &slice->out)) {
+    h2o_nif_slice_t *slice = NULL;
+    if (!h2o_nif_slice_create("string_strtoupper", h2o_nif_string_strtoupper_1_map, NULL, &slice)) {
+        return enif_make_badarg(env);
+    }
+    slice->in.length = in.size;
+    if (!enif_alloc_binary(in.size, &slice->out.binary)) {
         (void)h2o_nif_slice_release(slice);
         return enif_make_badarg(env);
     }
-    (void)memcpy(slice->out.data, in.data, in.size);
+    (void)memcpy(slice->out.binary.data, in.data, in.size);
 
     return h2o_nif_slice_schedule(env, slice);
 }
+
+/* fun h2o_nif:string_lcstris/2 */
 
 static size_t
 h2o_nif_string_lcstris_2_map(ErlNifEnv *env, h2o_nif_slice_t *slice, size_t offset, size_t length)
 {
     int result = slice->flags;
     if (result == 0) {
-        return slice->length;
+        return slice->in.length;
     }
-    result = h2o_lcstris((const char *)slice->in.data, slice->in.size, (const char *)slice->out.data, slice->out.size);
+    result = h2o_lcstris((const char *)slice->in.binary.data, slice->in.binary.size, (const char *)slice->out.binary.data, slice->out.binary.size);
     if (result) {
         return (offset + length);
     } else {
         slice->flags = result;
-        return slice->length;
+        return slice->in.length;
     }
 }
 
@@ -146,14 +164,19 @@ h2o_nif_string_lcstris_2(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
         return out;
     }
 
-    h2o_nif_slice_t *slice = h2o_nif_slice_create(env, "string_lcstris", target.size, 0, h2o_nif_string_lcstris_2_map,
-                                                  h2o_nif_string_lcstris_2_reduce, NULL);
+    h2o_nif_slice_t *slice = NULL;
+    if (!h2o_nif_slice_create("string_lcstris", h2o_nif_string_lcstris_2_map, h2o_nif_string_lcstris_2_reduce, &slice)) {
+        return enif_make_badarg(env);
+    }
     slice->flags = 1;
-    slice->in = target;
-    slice->out = test;
+    slice->in.length = target.size;
+    slice->in.binary = target;
+    slice->out.binary = test;
 
     return h2o_nif_slice_schedule(env, slice);
 }
+
+/* fun h2o_nif:string_base64_encode_capacity/1 */
 
 static ERL_NIF_TERM
 h2o_nif_string_base64_encode_capacity_1(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
@@ -167,17 +190,24 @@ h2o_nif_string_base64_encode_capacity_1(ErlNifEnv *env, int argc, const ERL_NIF_
     return enif_make_uint(env, h2o_base64_encode_capacity(len));
 }
 
+/* fun h2o_nif:string_decode_base64url/1 */
+
 static size_t
 h2o_nif_string_decode_base64url_1_map(ErlNifEnv *env, h2o_nif_slice_t *slice, size_t offset, size_t length)
 {
-    size_t offset2 = slice->offset2;
+    size_t i_pos = offset;
+    size_t o_pos = slice->out.offset;
 
-    h2o_iovec_t outv = h2o_decode_base64url(slice->pool, (const char *)(slice->in.data + offset), length);
-    (void)memcpy(slice->out.data + offset2, outv.base, outv.len);
+    h2o_iovec_t outv = h2o_decode_base64url(&slice->pool, (const char *)(slice->in.binary.data + i_pos), length);
+    if (outv.base == NULL) {
+        slice->badarg = 1;
+        (void)enif_release_binary(&slice->out.binary);
+        return slice->in.length;
+    }
+    (void)memcpy((slice->out.binary.data + o_pos), outv.base, outv.len);
+    slice->out.offset += outv.len;
 
-    slice->offset2 += outv.len;
-
-    (void)h2o_mem_clear_pool(slice->pool);
+    (void)h2o_mem_clear_pool(&slice->pool);
 
     return (offset + length);
 }
@@ -210,22 +240,25 @@ h2o_nif_string_decode_base64url_1(ErlNifEnv *env, int argc, const ERL_NIF_TERM a
     if (!enif_alloc_binary(outlen, &outbin)) {
         return enif_make_badarg(env);
     }
-    h2o_nif_slice_t *slice =
-        h2o_nif_slice_create(env, "string_base64_encode", in.size, 0, h2o_nif_string_decode_base64url_1_map, NULL, NULL);
-    slice->offset2 = 0;
-    slice->in = in;
-    slice->out = outbin;
-    slice->pool = (h2o_mem_pool_t *)enif_alloc(sizeof(h2o_mem_pool_t));
-    (void)memset(slice->pool, 0, sizeof(h2o_mem_pool_t));
-    (void)h2o_mem_init_pool(slice->pool);
+    h2o_nif_slice_t *slice = NULL;
+    if (!h2o_nif_slice_create("string_decode_base64url", h2o_nif_string_decode_base64url_1_map, NULL, &slice)) {
+        (void)enif_release_binary(&outbin);
+        return enif_make_badarg(env);
+    }
+    slice->in.length = in.size;
+    slice->in.binary = in;
+    slice->out.binary = outbin;
 
     return h2o_nif_slice_schedule(env, slice);
 }
 
+/* fun h2o_nif:string_base64_encode/2 */
+
 static size_t
 h2o_nif_string_base64_encode_2_map(ErlNifEnv *env, h2o_nif_slice_t *slice, size_t offset, size_t length)
 {
-    size_t offset2 = slice->offset2;
+    size_t i_pos = offset;
+    size_t o_pos = slice->out.offset;
     int url_encoded = slice->flags;
     size_t outlen;
     size_t enclen;
@@ -234,14 +267,14 @@ h2o_nif_string_base64_encode_2_map(ErlNifEnv *env, h2o_nif_slice_t *slice, size_
         length++;
     }
 
-    if ((offset + length) >= slice->length) {
-        length = slice->length - offset;
+    if ((offset + length) >= slice->in.length) {
+        length = slice->in.length - offset;
     }
 
     outlen = h2o_base64_encode_capacity(length);
-    enclen = h2o_base64_encode((char *)(slice->out.data + offset2), (const char *)(slice->in.data + offset), length, url_encoded);
+    enclen = h2o_base64_encode((char *)(slice->out.binary.data + o_pos), (const char *)(slice->in.binary.data + i_pos), length, url_encoded);
 
-    slice->offset2 += (outlen && !url_encoded) ? outlen - 1 : enclen;
+    slice->out.offset += (outlen && !url_encoded) ? outlen - 1 : enclen;
 
     return (offset + length);
 }
@@ -251,8 +284,8 @@ h2o_nif_string_base64_encode_2_reduce(ErlNifEnv *env, h2o_nif_slice_t *slice)
 {
     ERL_NIF_TERM out;
 
-    out = enif_make_binary(env, &slice->out);
-    out = enif_make_sub_binary(env, out, 0, slice->offset2);
+    out = enif_make_binary(env, &slice->out.binary);
+    out = enif_make_sub_binary(env, out, 0, slice->out.offset);
 
     return out;
 }
@@ -287,58 +320,47 @@ h2o_nif_string_base64_encode_2(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv
     if (!enif_alloc_binary(outlen, &outbin)) {
         return enif_make_badarg(env);
     }
-    h2o_nif_slice_t *slice = h2o_nif_slice_create(env, "string_base64_encode", in.size, 0, h2o_nif_string_base64_encode_2_map,
-                                                  h2o_nif_string_base64_encode_2_reduce, NULL);
-    slice->offset2 = 0;
+    h2o_nif_slice_t *slice = NULL;
+    if (!h2o_nif_slice_create("string_base64_encode", h2o_nif_string_base64_encode_2_map, h2o_nif_string_base64_encode_2_reduce, &slice)) {
+        (void)enif_release_binary(&outbin);
+        return enif_make_badarg(env);
+    }
     slice->flags = url_encoded;
-    slice->in = in;
-    slice->out = outbin;
+    slice->in.length = in.size;
+    slice->in.binary = in;
+    slice->out.binary = outbin;
 
     return h2o_nif_slice_schedule(env, slice);
 }
 
+/* fun h2o_nif:string_hex_decode/1 */
+
 static size_t
 h2o_nif_string_hex_decode_1_map(ErlNifEnv *env, h2o_nif_slice_t *slice, size_t offset, size_t length)
 {
-    size_t offset2 = slice->offset2;
+    size_t i_pos = offset;
+    size_t o_pos = slice->out.offset;
     size_t outlen;
-
-    if (slice->flags == -1) {
-        return slice->length;
-    }
 
     while (length % 2 != 0) {
         length++;
     }
 
-    if ((offset + length) >= slice->length) {
-        length = slice->length - offset;
+    if ((offset + length) >= slice->in.length) {
+        length = slice->in.length - offset;
     }
 
     outlen = length / 2;
 
-    slice->flags = h2o_hex_decode((char *)(slice->out.data + offset2), (const char *)(slice->in.data + offset), length);
-
-    if (slice->flags == -1) {
-        return slice->length;
+    if (h2o_hex_decode((char *)(slice->out.binary.data + o_pos), (const char *)(slice->in.binary.data + i_pos), length) == -1) {
+        slice->badarg = 1;
+        (void)enif_release_binary(&slice->out.binary);
+        return slice->in.length;
     }
 
-    slice->offset2 += outlen;
+    slice->out.offset += outlen;
 
     return (offset + length);
-}
-
-static ERL_NIF_TERM
-h2o_nif_string_hex_decode_1_reduce(ErlNifEnv *env, h2o_nif_slice_t *slice)
-{
-    if (slice->flags == -1) {
-        (void)enif_release_binary(&slice->out);
-        return enif_make_badarg(env);
-    }
-
-    ERL_NIF_TERM out;
-    out = enif_make_binary(env, &slice->out);
-    return out;
 }
 
 static ERL_NIF_TERM
@@ -368,24 +390,30 @@ h2o_nif_string_hex_decode_1(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     if (!enif_alloc_binary(outlen, &outbin)) {
         return enif_make_badarg(env);
     }
-    h2o_nif_slice_t *slice = h2o_nif_slice_create(env, "string_hex_decode", in.size, 0, h2o_nif_string_hex_decode_1_map,
-                                                  h2o_nif_string_hex_decode_1_reduce, NULL);
-    slice->flags = 0;
-    slice->in = in;
-    slice->out = outbin;
+    h2o_nif_slice_t *slice = NULL;
+    if (!h2o_nif_slice_create("string_hex_decode", h2o_nif_string_hex_decode_1_map, NULL, &slice)) {
+        (void)enif_release_binary(&outbin);
+        return enif_make_badarg(env);
+    }
+    slice->in.length = in.size;
+    slice->in.binary = in;
+    slice->out.binary = outbin;
 
     return h2o_nif_slice_schedule(env, slice);
 }
 
+/* fun h2o_nif:string_hex_encode/1 */
+
 static size_t
 h2o_nif_string_hex_encode_1_map(ErlNifEnv *env, h2o_nif_slice_t *slice, size_t offset, size_t length)
 {
-    size_t offset2 = slice->offset2;
+    size_t i_pos = offset;
+    size_t o_pos = slice->out.offset;
     size_t outlen = (length * 2) + 1;
 
-    (void)h2o_hex_encode((char *)(slice->out.data + offset2), (const char *)(slice->in.data + offset), length);
+    (void)h2o_hex_encode((char *)(slice->out.binary.data + o_pos), (const char *)(slice->in.binary.data + i_pos), length);
 
-    slice->offset2 += outlen - 1;
+    slice->out.offset += outlen - 1;
 
     return (offset + length);
 }
@@ -395,8 +423,8 @@ h2o_nif_string_hex_encode_1_reduce(ErlNifEnv *env, h2o_nif_slice_t *slice)
 {
     ERL_NIF_TERM out;
 
-    out = enif_make_binary(env, &slice->out);
-    out = enif_make_sub_binary(env, out, 0, slice->offset2);
+    out = enif_make_binary(env, &slice->out.binary);
+    out = enif_make_sub_binary(env, out, 0, slice->out.offset);
 
     return out;
 }
@@ -428,38 +456,55 @@ h2o_nif_string_hex_encode_1(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     if (!enif_alloc_binary(outlen, &outbin)) {
         return enif_make_badarg(env);
     }
-    h2o_nif_slice_t *slice = h2o_nif_slice_create(env, "string_hex_encode", in.size, 0, h2o_nif_string_hex_encode_1_map,
-                                                  h2o_nif_string_hex_encode_1_reduce, NULL);
-    slice->offset2 = 0;
-    slice->in = in;
-    slice->out = outbin;
+    h2o_nif_slice_t *slice = NULL;
+    if (!h2o_nif_slice_create("string_hex_encode", h2o_nif_string_hex_encode_1_map, h2o_nif_string_hex_encode_1_reduce, &slice)) {
+        (void)enif_release_binary(&outbin);
+        return enif_make_badarg(env);
+    }
+    slice->in.length = in.size;
+    slice->in.binary = in;
+    slice->out.binary = outbin;
 
     return h2o_nif_slice_schedule(env, slice);
 }
 
+/* fun h2o_nif:string_uri_escape/2 */
+
+typedef struct h2o_nif_string_uri_escape_2_s h2o_nif_string_uri_escape_2_t;
+struct h2o_nif_string_uri_escape_2_s {
+    h2o_nif_slice_t super;
+    char *preserve_chars;
+};
+
 static size_t
-h2o_nif_string_uri_escape_2_map(ErlNifEnv *env, h2o_nif_slice_t *slice, size_t offset, size_t length)
+h2o_nif_string_uri_escape_2_map(ErlNifEnv *env, h2o_nif_slice_t *super, size_t offset, size_t length)
 {
-    char *preserve_chars = (char *)slice->data;
-    size_t offset2 = slice->offset2;
+    h2o_nif_string_uri_escape_2_t *slice = (h2o_nif_string_uri_escape_2_t *)super;
+    size_t i_pos = offset;
+    size_t o_pos = slice->super.out.offset;
 
-    h2o_iovec_t outv = h2o_uri_escape(slice->pool, (const char *)(slice->in.data + offset), length, preserve_chars);
-    (void)memcpy(slice->out.data + offset2, outv.base, outv.len);
+    h2o_iovec_t outv = h2o_uri_escape(&slice->super.pool, (const char *)(slice->super.in.binary.data + i_pos), length, slice->preserve_chars);
+    (void)memcpy(slice->super.out.binary.data + o_pos, outv.base, outv.len);
 
-    slice->offset2 += outv.len;
+    slice->super.out.offset += outv.len;
 
-    (void)h2o_mem_clear_pool(slice->pool);
+    (void)h2o_mem_clear_pool(&slice->super.pool);
 
     return (offset + length);
 }
 
 static ERL_NIF_TERM
-h2o_nif_string_uri_escape_2_reduce(ErlNifEnv *env, h2o_nif_slice_t *slice)
+h2o_nif_string_uri_escape_2_reduce(ErlNifEnv *env, h2o_nif_slice_t *super)
 {
+    h2o_nif_string_uri_escape_2_t *slice = (h2o_nif_string_uri_escape_2_t *)super;
     ERL_NIF_TERM out;
 
-    out = enif_make_binary(env, &slice->out);
-    out = enif_make_sub_binary(env, out, 0, slice->offset2);
+    out = enif_make_binary(env, &slice->super.out.binary);
+    out = enif_make_sub_binary(env, out, 0, slice->super.out.offset);
+    if (slice->preserve_chars != NULL) {
+        (void)enif_free(slice->preserve_chars);
+        slice->preserve_chars = NULL;
+    }
 
     return out;
 }
@@ -492,6 +537,10 @@ h2o_nif_string_uri_escape_2(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
         unsigned char *buf = enif_make_new_binary(env, outv.len, &out);
         (void)memcpy(buf, outv.base, outv.len);
         (void)free(outv.base);
+        if (preserve_chars != NULL) {
+            (void)enif_free(preserve_chars);
+            preserve_chars = NULL;
+        }
         return out;
     }
 
@@ -500,18 +549,24 @@ h2o_nif_string_uri_escape_2(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     if (!enif_alloc_binary(outlen, &outbin)) {
         return enif_make_badarg(env);
     }
-    h2o_nif_slice_t *slice = h2o_nif_slice_create(env, "string_uri_escape", in.size, 0, h2o_nif_string_uri_escape_2_map,
-                                                  h2o_nif_string_uri_escape_2_reduce, NULL);
-    slice->offset2 = 0;
-    slice->in = in;
-    slice->out = outbin;
-    slice->data = (void *)preserve_chars;
-    slice->pool = (h2o_mem_pool_t *)enif_alloc(sizeof(h2o_mem_pool_t));
-    (void)memset(slice->pool, 0, sizeof(h2o_mem_pool_t));
-    (void)h2o_mem_init_pool(slice->pool);
+    h2o_nif_string_uri_escape_2_t *slice = NULL;
+    if (!__h2o_nif_slice_create(sizeof(h2o_nif_string_uri_escape_2_t), "string_uri_escape", h2o_nif_string_uri_escape_2_map, h2o_nif_string_uri_escape_2_reduce, (h2o_nif_slice_t **)&slice)) {
+        (void)enif_release_binary(&outbin);
+        if (preserve_chars != NULL) {
+            (void)enif_free(preserve_chars);
+            preserve_chars = NULL;
+        }
+        return enif_make_badarg(env);
+    }
+    slice->super.in.length = in.size;
+    slice->super.in.binary = in;
+    slice->super.out.binary = outbin;
+    slice->preserve_chars = preserve_chars;
 
-    return h2o_nif_slice_schedule(env, slice);
+    return h2o_nif_slice_schedule(env, (h2o_nif_slice_t *)slice);
 }
+
+/* fun h2o_nif:string_get_filext/1 */
 
 static ERL_NIF_TERM
 h2o_nif_string_get_filext_1(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
@@ -540,6 +595,8 @@ h2o_nif_string_get_filext_1(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     return out;
 }
 
+/* fun h2o_nif:string_str_stripws/1 */
+
 /* WARN: blocking possible, unsafe */
 static ERL_NIF_TERM
 h2o_nif_string_str_stripws_1(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
@@ -566,44 +623,36 @@ h2o_nif_string_str_stripws_1(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]
     return out;
 }
 
+/* fun h2o_nif:string_htmlescape/1 */
+
 static size_t
 h2o_nif_string_htmlescape_1_map(ErlNifEnv *env, h2o_nif_slice_t *slice, size_t offset, size_t length)
 {
-    size_t offset2 = slice->offset2;
+    size_t i_pos = offset;
+    size_t o_pos = slice->out.offset;
 
-    if (slice->flags == -1) {
-        return slice->length;
+    h2o_iovec_t outv = h2o_htmlescape(&slice->pool, (const char *)(slice->in.binary.data + i_pos), length);
+
+    if (outv.base == NULL) {
+        slice->badarg = 1;
+        (void)enif_release_binary(&slice->out.binary);
+        return slice->in.length;
     }
 
-    h2o_iovec_t outv = h2o_htmlescape(slice->pool, (const char *)(slice->in.data + offset), length);
+    slice->out.offset += outv.len;
 
-    slice->offset2 += outv.len;
-
-    if (slice->offset2 > slice->out.size) {
-        if (!enif_realloc_binary(&slice->out, slice->offset2 + (slice->length - offset - length))) {
-            slice->flags = -1;
-            (void)h2o_mem_clear_pool(slice->pool);
-            return slice->length;
+    if (slice->out.offset > slice->out.binary.size) {
+        if (!enif_realloc_binary(&slice->out.binary, slice->out.offset + (slice->in.length - i_pos - length))) {
+            slice->badarg = 1;
+            (void)enif_release_binary(&slice->out.binary);
+            return slice->in.length;
         }
     }
 
-    (void)memcpy(slice->out.data + offset2, outv.base, outv.len);
-    (void)h2o_mem_clear_pool(slice->pool);
+    (void)memcpy(slice->out.binary.data + o_pos, outv.base, outv.len);
+    (void)h2o_mem_clear_pool(&slice->pool);
 
     return (offset + length);
-}
-
-static ERL_NIF_TERM
-h2o_nif_string_htmlescape_1_reduce(ErlNifEnv *env, h2o_nif_slice_t *slice)
-{
-    if (slice->flags == -1) {
-        (void)enif_release_binary(&slice->out);
-        return enif_make_badarg(env);
-    }
-
-    ERL_NIF_TERM out;
-    out = enif_make_binary(env, &slice->out);
-    return out;
 }
 
 static ERL_NIF_TERM
@@ -636,15 +685,14 @@ h2o_nif_string_htmlescape_1(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     if (!enif_alloc_binary(outlen, &outbin)) {
         return enif_make_badarg(env);
     }
-    h2o_nif_slice_t *slice = h2o_nif_slice_create(env, "string_htmlescape", in.size, 0, h2o_nif_string_htmlescape_1_map,
-                                                  h2o_nif_string_htmlescape_1_reduce, NULL);
-    slice->offset2 = 0;
-    slice->flags = 0;
-    slice->in = in;
-    slice->out = outbin;
-    slice->pool = (h2o_mem_pool_t *)enif_alloc(sizeof(h2o_mem_pool_t));
-    (void)memset(slice->pool, 0, sizeof(h2o_mem_pool_t));
-    (void)h2o_mem_init_pool(slice->pool);
+    h2o_nif_slice_t *slice = NULL;
+    if (!h2o_nif_slice_create("string_htmlescape", h2o_nif_string_htmlescape_1_map, NULL, &slice)) {
+        (void)enif_release_binary(&outbin);
+        return enif_make_badarg(env);
+    }
+    slice->in.length = in.size;
+    slice->in.binary = in;
+    slice->out.binary = outbin;
 
     return h2o_nif_slice_schedule(env, slice);
 }

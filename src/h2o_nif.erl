@@ -10,6 +10,14 @@
 %%%-------------------------------------------------------------------
 -module(h2o_nif).
 
+-export([register_monitor/0]).
+-export([monitor_ack/1]).
+-export([roundtrip/0]).
+
+%% h2o_nif/logger.c.h
+-export([logger_read_start/1]).
+-export([logger_read/1]).
+
 %% h2o_nif/port.c.h
 -export([port_lookup/1]).
 -export([port_kill/1]).
@@ -66,6 +74,25 @@
 % -export([request_upgrade_to_websocket/1]).
 
 -on_load(init/0).
+
+register_monitor() ->
+	erlang:nif_error({nif_not_loaded, ?MODULE}).
+
+monitor_ack(_USec) ->
+	erlang:nif_error({nif_not_loaded, ?MODULE}).
+
+roundtrip() ->
+	erlang:nif_error({nif_not_loaded, ?MODULE}).
+
+%%%===================================================================
+%%% h2o_nif/logger.c.h
+%%%===================================================================
+
+logger_read_start(_Port) ->
+	erlang:nif_error({nif_not_loaded, ?MODULE}).
+
+logger_read(_Port) ->
+	erlang:nif_error({nif_not_loaded, ?MODULE}).
 
 %%%===================================================================
 %%% h2o_nif/port.c.h

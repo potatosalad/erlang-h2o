@@ -36,7 +36,7 @@
 %%%===================================================================
 
 open() ->
-	Port = #h2o_port{} = h2o_nif:server_open(),
+	Port = h2o_nif:server_open(),
 	true = h2o_kernel:port_connect(Port),
 	{ok, Port}.
 
@@ -66,7 +66,8 @@ getcfg(Port) ->
 	h2o_nif:server_getcfg(Port).
 
 setcfg(Port, Config0) ->
-	{Config1, Bindings0} = h2o_yaml:encode(Config0),
+	{Config1, Bindings0} = h2o_config:encode(Config0),
+	io:format("config:~n~s~n", [Config1]),
 	try h2o_nif:server_setcfg(Port, Config1) of
 		ok ->
 			Bindings1 = receive_bindings(Bindings0, []),
@@ -87,31 +88,13 @@ start(Port) ->
 % %%%-------------------------------------------------------------------
 
 %% @private
-receive_bindings([{Host, Path, Type, Handler, Opts, SupType, NbAcceptors, Ref} | Bindings], Acc) ->
+receive_bindings([{Module, Ref, Path, Opts} | Bindings], Acc) ->
 	receive
 		{Ref, Port} ->
-			receive_bindings(Bindings, [{Host, Path, Type, Handler, Opts, SupType, NbAcceptors, Port} | Acc])
+			receive_bindings(Bindings, [{Module, Port, Path, Opts} | Acc])
 	after
-		1000 ->
-			erlang:error({badarg, [Host, Path, Type, Handler, Opts, SupType, NbAcceptors, Ref]})
+		0 ->
+			erlang:error({badarg, [Module, Ref, Path, Opts]})
 	end;
 receive_bindings([], Acc) ->
 	lists:reverse(Acc).
-
-% %% @private
-% sync_input(P, Owner, Flag) ->
-% 	sync_input(P, to_id(P), Owner, Flag).
-
-% %% @private
-% sync_input(P, ID, Owner, Flag) ->
-% 	receive
-% 		{h2o_port_data, ID, Data} ->
-% 			Owner ! {h2o_port_data, ID, Data},
-% 			sync_input(P, ID, Owner, Flag);
-% 		{h2o_port_closed, ID} ->
-% 			Owner ! {h2o_port_closed, ID},
-% 			sync_input(P, ID, Owner, true)
-% 	after
-% 		0 ->
-% 			Flag
-% 	end.

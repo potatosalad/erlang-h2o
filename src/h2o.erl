@@ -10,7 +10,10 @@
 %%%-------------------------------------------------------------------
 -module(h2o).
 
+-export([flush_logger/1]).
+-export([reductions/3]).
 -export([start/0]).
+-export([roundtrip/0]).
 -export([example/0]).
 % -export([server_open/0]).
 % -export([server_getcfg/1]).
@@ -22,26 +25,76 @@
 % -export([request_reply/1]).
 % -export([get_handler/1]).
 
+flush_logger(Port) ->
+	ok = h2o_nif:logger_read_start(Port),
+	receive
+		{h2o_port_data, Port, ready_input} ->
+			io:format("~p~n", [h2o:reductions(h2o_nif, logger_read, [Port])]),
+			flush_logger(Port)
+	end.
+
+reductions(Module, Function, Arguments) ->
+	Parent = self(),
+	Pid = spawn(fun() ->
+		Self = self(),
+		Start = os:timestamp(),
+		R0 = process_info(Self, reductions),
+		Res = erlang:apply(Module, Function, Arguments),
+		R1 = process_info(Self, reductions),
+		T = timer:now_diff(os:timestamp(), Start),
+		Parent ! {Self, {T, length(Res), R0, R1}}
+	end),
+	receive
+		{Pid, Result} ->
+			Result
+	end.
+
 start() ->
 	application:ensure_all_started(?MODULE).
+
+roundtrip() ->
+	{true, USec} = h2o_nif:roundtrip(),
+	h2o_nif:monitor_ack(USec).
 
 example() ->
 	Config = [
 		{<<"listen">>, 8080},
 		{<<"num-threads">>, 1},
+		{<<"erlang.logger">>, {toppage_logger, []}},%, <<"%h\1%l\1%u\1%t\1%r\1%s\1%b\1%{Referer}i\1%{User-agent}i\1">>, apache}},
 		{<<"hosts">>, [
 			{<<"*">>, [
 				{<<"paths">>, [
 					{<<"/">>, [
-						{<<"erlang.handler">>, {toppage_handler, [], worker, 10}}
+						{<<"file.dir">>, <<"/Users/andrew/Documents">>}
 					]}
 				]}
 			]}
 		]}
 	],
-	supervisor:start_child(h2o_sup, {example_server,
-		{h2o_server_sup, start_link, [example, Config]},
-		permanent, 5000, supervisor, [h2o_server_sup]}).
+	{ok, Server} = h2o_server:open(),
+	{ok, Bindings} = h2o_server:setcfg(Server, Config),
+	ok = h2o_server:start(Server),
+	{ok, Server, Bindings}.
+
+	% Config = [
+	% 	{<<"listen">>, 8080},
+	% 	% {<<"max-connections">>, 4096},
+	% 	{<<"num-threads">>, 1},
+	% 	{<<"hosts">>, [
+	% 		{<<"*">>, [
+	% 			{<<"paths">>, [
+	% 				{<<"/">>, [
+	% 					% {<<"fake.handler">>, 0}
+	% 					{<<"erlang.handler">>, {toppage_handler, [], worker, 10}}%,
+	% 					% {<<"erlang.logger">>, {toppage_logger, [], worker, 10}}
+	% 				]}
+	% 			]}
+	% 		]}
+	% 	]}
+	% ],
+	% supervisor:start_child(h2o_sup, {example_server,
+	% 	{h2o_server_sup, start_link, [example, Config]},
+	% 	permanent, 5000, supervisor, [h2o_server_sup]}).
 	% {ok, SPort} = h2o_server:open(),
 	% {ok, [{_, _, _, _, LPort}]} = h2o_server:setcfg(SPort, [
 	% % {ok, []} = h2o_server:setcfg(SPort, [

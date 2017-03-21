@@ -32,7 +32,7 @@
 #endif
 
 #include "server.h"
-#include "request.h"
+// #include "request.h"
 
 #include <yoml-parser.h>
 // #include "neverbleed.h"
@@ -43,10 +43,61 @@
 #include <h2o/serverutil.h>
 // #include "standalone.h"
 
-static H2O_NIF_RETURN h2o_nif_server_on_close(ErlNifEnv *env, h2o_nif_port_t *port, h2o_nif_return_ctx_t *ctx);
-static void h2o_nif_server_dtor(void *block);
+/* Port Functions */
 
-/* Server Thread Functions */
+static ERL_NIF_TERM h2o_nif_server_on_close(ErlNifEnv *env, h2o_nif_port_t *port, int is_direct_call);
+static void h2o_nif_server_dtor(ErlNifEnv *env, h2o_nif_port_t *port);
+
+int
+h2o_nif_server_open(h2o_nif_server_t **serverp)
+{
+    assert(serverp != NULL);
+    h2o_nif_server_t *server = NULL;
+    if (!h2o_nif_port_open(NULL, sizeof(h2o_nif_server_t), (h2o_nif_port_t **)&server)) {
+        *serverp = NULL;
+        return 0;
+    }
+    server->super.dtor = h2o_nif_server_dtor;
+    server->super.type = H2O_NIF_PORT_TYPE_SERVER;
+    server->launch_time = time(NULL);
+    server->threads = NULL;
+    (void)atomic_init(&server->shutdown_requested, 0);
+    (void)atomic_init(&server->initialized_threads, 0);
+    (void)atomic_init(&server->shutdown_threads, 0);
+    (void)atomic_init(&server->state._num_connections, 0);
+    (void)atomic_init(&server->state._num_sessions, 0);
+    if (!h2o_nif_config_init(&server->config)) {
+        (void)h2o_nif_port_close(&server->super, NULL, NULL);
+        *serverp = NULL;
+        return 0;
+    }
+    (void)h2o_nif_port_keep(&server->super);
+    server->super.on_close.callback = h2o_nif_server_on_close;
+    *serverp = server;
+    return 1;
+}
+
+static ERL_NIF_TERM
+h2o_nif_server_on_close(ErlNifEnv *env, h2o_nif_port_t *port, int is_direct_call)
+{
+    TRACE_F("h2o_nif_server_on_close:%s:%d\n", __FILE__, __LINE__);
+    assert(port->type == H2O_NIF_PORT_TYPE_SERVER);
+    h2o_nif_server_t *server = (h2o_nif_server_t *)port;
+    (void)h2o_nif_config_dispose(&server->config);
+    (void)h2o_nif_port_release(&server->super);
+    return ATOM_ok;
+}
+
+static void
+h2o_nif_server_dtor(ErlNifEnv *env, h2o_nif_port_t *port)
+{
+    TRACE_F("h2o_nif_server_dtor:%s:%d\n", __FILE__, __LINE__);
+    assert(port->type == H2O_NIF_PORT_TYPE_SERVER);
+    return;
+}
+
+/* Server Functions */
+
 static void *h2o_nif_server_run_loop(void *arg);
 static void context_clear_timeout(h2o_loop_t *loop, h2o_timeout_t *timeout);
 static void context_clear_timeouts(h2o_context_t *ctx);
@@ -54,78 +105,20 @@ static void notify_all_threads(h2o_nif_server_t *server);
 static int num_connections(h2o_nif_server_t *server, int delta);
 static unsigned long num_sessions(h2o_nif_server_t *server, int delta);
 static void on_accept(h2o_socket_t *listener, const char *err);
-static void on_erlang(h2o_multithread_receiver_t *receiver, h2o_linklist_t *messages);
+// static void on_erlang(h2o_multithread_receiver_t *receiver, h2o_linklist_t *messages);
 static void on_server_notification(h2o_multithread_receiver_t *receiver, h2o_linklist_t *messages);
 static void on_socketclose(void *data);
 static void set_cloexec(int fd);
 static void update_listener_state(h2o_nif_srv_listen_t *listeners);
 
 int
-h2o_nif_server_open(h2o_nif_port_t **portp)
+h2o_nif_server_start(h2o_nif_server_t *server)
 {
-    assert(portp != NULL);
-    h2o_nif_server_t *server = h2o_nif_resource_alloc(sizeof(*server));
-    if (server == NULL) {
-        *portp = NULL;
+    /* switch to running status */
+    if (!h2o_nif_port_set_started(&server->super)) {
         return 0;
     }
-    server->resource.dtor = h2o_nif_server_dtor;
-    if (!h2o_nif_config_init(&server->config)) {
-        (void)h2o_nif_server_release(server);
-        *portp = NULL;
-        return 0;
-    }
-    server->launch_time = time(NULL);
-    server->threads = NULL;
-    server->shutdown_requested = 0;
-    server->initialized_threads = 0;
-    server->shutdown_threads = 0;
-    server->state._num_connections = 0;
-    server->state._num_sessions = 0;
-    h2o_nif_port_t *port = NULL;
-    if (!h2o_nif_port_open(NULL, &port)) {
-        (void)h2o_nif_config_dispose(&server->config);
-        (void)h2o_nif_server_release(server);
-        *portp = NULL;
-        return 0;
-    }
-    (void)h2o_nif_port_keep(port);
-    server->port = port;
-    port->on_close.callback = h2o_nif_server_on_close;
-    port->type = H2O_NIF_PORT_TYPE_SERVER;
-    port->data = (void *)server;
-    *portp = port;
-    return 1;
-}
 
-static H2O_NIF_RETURN
-h2o_nif_server_on_close(ErlNifEnv *env, h2o_nif_port_t *port, h2o_nif_return_ctx_t *ctx)
-{
-    TRACE_F("h2o_nif_server_on_close:%s:%d\n", __FILE__, __LINE__);
-    assert(port->type == H2O_NIF_PORT_TYPE_SERVER);
-    h2o_nif_server_t *server = (h2o_nif_server_t *)port->data;
-    (void)h2o_nif_config_dispose(&server->config);
-    (void)h2o_nif_server_release(server);
-    return H2O_NIF_RETURN_DONE;
-}
-
-static void
-h2o_nif_server_dtor(void *block)
-{
-    TRACE_F("h2o_nif_server_dtor:%s:%d\n", __FILE__, __LINE__);
-    h2o_nif_server_t *server = (h2o_nif_server_t *)block;
-    h2o_nif_port_t *port = server->port;
-    // Unlink server from port (server is now unsafe to use)
-    if (port != NULL) {
-        port->data = NULL;
-        (void)h2o_nif_port_release(port);
-    }
-    return;
-}
-
-int
-h2o_nif_server_start(h2o_nif_port_t *port, h2o_nif_server_t *server)
-{
     h2o_nif_config_t *config = &server->config;
 
     /* calculate defaults (note: open file cached is purged once every loop) */
@@ -173,26 +166,21 @@ h2o_nif_server_start(h2o_nif_port_t *port, h2o_nif_server_t *server)
 
     assert(config->num_threads != 0);
 
-    /* switch to running status */
-    if (h2o_nif_port_cas_or_state(port, H2O_NIF_PORT_STATE_STARTED) == H2O_NIF_PORT_STATE_CLOSED) {
-        return 0;
-    }
-
     /* start the threads */
     server->threads = enif_alloc(sizeof(server->threads[0]) * config->num_threads);
     (void)memset(server->threads, 0, sizeof(server->threads[0]) * config->num_threads);
     size_t i;
+    char name[32];
     for (i = 0; i != config->num_threads; ++i) {
         h2o_nif_srv_thread_t *thread = &server->threads[i];
         thread->server = server;
         thread->idx = i;
-        (void)enif_thread_create("h2o_nif_server", &thread->tid, h2o_nif_server_run_loop, (void *)thread, NULL);
+        (void)snprintf(name, sizeof(name), "h2o_nif_srv_%zu", i);
+        (void)enif_thread_create(name, &thread->tid, h2o_nif_server_run_loop, (void *)thread, NULL);
     }
 
     return 1;
 }
-
-/* Server Thread Functions */
 
 static void *
 h2o_nif_server_run_loop(void *arg)
@@ -215,12 +203,12 @@ h2o_nif_server_run_loop(void *arg)
     thread->ctx.thread = thread;
 
     h2o_loop_t *loop = h2o_evloop_create();
-    thread->ipc_queue = h2o_nif_ipc_create_queue(loop);
-    assert(thread->ipc_queue != NULL);
+    // thread->ipc_queue = h2o_nif_ipc_create_queue(loop);
+    // assert(thread->ipc_queue != NULL);
     (void)h2o_context_init(&thread->ctx.super, loop, &config->globalconf);
     (void)h2o_multithread_register_receiver(thread->ctx.super.queue, &thread->server_notifications, on_server_notification);
     (void)h2o_multithread_register_receiver(thread->ctx.super.queue, &thread->memcached, h2o_memcached_receiver);
-    (void)h2o_multithread_register_receiver(thread->ctx.super.queue, &thread->erlang, on_erlang);
+    // (void)h2o_multithread_register_receiver(thread->ctx.super.queue, &thread->erlang, on_erlang);
 
     // TRACE_F("enif_thread_self() = %p\n", enif_thread_self());
 
@@ -252,11 +240,12 @@ h2o_nif_server_run_loop(void *arg)
     /* and start listening */
     (void)update_listener_state(listeners);
 
-    __sync_fetch_and_add(&server->initialized_threads, 1);
+    (void)atomic_fetch_add_explicit(&server->initialized_threads, 1, memory_order_relaxed);
     /* the main loop */
     while (1) {
-        if (server->shutdown_requested)
+        if (atomic_load_explicit(&server->shutdown_requested, memory_order_relaxed)) {
             break;
+        }
         (void)update_listener_state(listeners);
         /* run the loop once */
         (void)h2o_evloop_run(thread->ctx.super.loop, INT32_MAX);
@@ -280,16 +269,14 @@ h2o_nif_server_run_loop(void *arg)
     }
 
     /* dispose of the context */
-    // (void)enif_mutex_lock(h2o_nif_mutex);
-    (void)h2o_multithread_unregister_receiver(thread->ctx.super.queue, &thread->erlang);
+    // (void)h2o_multithread_unregister_receiver(thread->ctx.super.queue, &thread->erlang);
     (void)h2o_multithread_unregister_receiver(thread->ctx.super.queue, &thread->memcached);
     (void)h2o_multithread_unregister_receiver(thread->ctx.super.queue, &thread->server_notifications);
     (void)context_clear_timeouts(&thread->ctx.super);
     (void)h2o_context_dispose(&thread->ctx.super);
-    // (void)enif_mutex_unlock(h2o_nif_mutex);
 
-    (void)h2o_nif_ipc_destroy_queue(thread->ipc_queue);
-    thread->ipc_queue = NULL;
+    // (void)h2o_nif_ipc_destroy_queue(thread->ipc_queue);
+    // thread->ipc_queue = NULL;
 
     /* destroy the loop */
     (void)h2o_evloop_destroy(thread->ctx.super.loop);
@@ -297,7 +284,7 @@ h2o_nif_server_run_loop(void *arg)
     /* free the listeners */
     (void)enif_free(listeners);
 
-    __sync_fetch_and_add(&server->shutdown_threads, 1);
+    (void)atomic_fetch_add_explicit(&server->shutdown_threads, 1, memory_order_relaxed);
 
     return NULL;
 }
@@ -350,13 +337,13 @@ notify_all_threads(h2o_nif_server_t *server)
 static int
 num_connections(h2o_nif_server_t *server, int delta)
 {
-    return __sync_fetch_and_add(&server->state._num_connections, delta);
+    return atomic_fetch_add_explicit(&server->state._num_connections, delta, memory_order_relaxed);
 }
 
 static unsigned long
 num_sessions(h2o_nif_server_t *server, int delta)
 {
-    return __sync_fetch_and_add(&server->state._num_sessions, delta);
+    return atomic_fetch_add_explicit(&server->state._num_sessions, delta, memory_order_relaxed);
 }
 
 static void
@@ -366,8 +353,9 @@ on_accept(h2o_socket_t *listener, const char *err)
     h2o_nif_server_t *server = ctx->thread->server;
     h2o_nif_config_t *config = &server->config;
     size_t num_accepts = config->max_connections / 16 / config->num_threads;
-    if (num_accepts < 8)
+    if (num_accepts < 8) {
         num_accepts = 8;
+    }
 
     if (err != NULL) {
         return;
@@ -397,18 +385,18 @@ on_accept(h2o_socket_t *listener, const char *err)
     } while (--num_accepts != 0);
 }
 
-static void
-on_erlang(h2o_multithread_receiver_t *receiver, h2o_linklist_t *messages)
-{
-    while (!h2o_linklist_is_empty(messages)) {
-        h2o_multithread_message_t *message = H2O_STRUCT_FROM_MEMBER(h2o_multithread_message_t, link, messages->next);
-        h2o_nif_multithread_request_t *ctx = (h2o_nif_multithread_request_t *)message;
-        (void)h2o_linklist_unlink(&message->link);
-        (void)ctx->callback(ctx->request, ctx);
-        (void)h2o_nif_request_release(ctx->request);
-        (void)enif_free(ctx);
-    }
-}
+// static void
+// on_erlang(h2o_multithread_receiver_t *receiver, h2o_linklist_t *messages)
+// {
+//     while (!h2o_linklist_is_empty(messages)) {
+//         h2o_multithread_message_t *message = H2O_STRUCT_FROM_MEMBER(h2o_multithread_message_t, link, messages->next);
+//         h2o_nif_multithread_request_t *ctx = (h2o_nif_multithread_request_t *)message;
+//         (void)h2o_linklist_unlink(&message->link);
+//         (void)ctx->callback(ctx->request, ctx);
+//         (void)h2o_nif_request_release(ctx->request);
+//         (void)enif_free(ctx);
+//     }
+// }
 
 static void
 on_server_notification(h2o_multithread_receiver_t *receiver, h2o_linklist_t *messages)
@@ -433,7 +421,7 @@ on_socketclose(void *data)
 
     if (prev_num_connections == config->max_connections) {
         /* ready to accept new connections. wake up all the threads! */
-        notify_all_threads(server);
+        (void)notify_all_threads(server);
     }
 }
 

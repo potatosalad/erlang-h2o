@@ -5,6 +5,20 @@
 #define H2O_NIF_CONFIG_H
 
 #include "globals.h"
+#include "port.h"
+
+/* Types */
+
+typedef struct h2o_nif_config_s h2o_nif_config_t;
+typedef struct h2o_nif_cfg_listen_s h2o_nif_cfg_listen_t;
+
+struct h2o_nif_cfg_listen_s {
+    int fd;
+    struct sockaddr_storage addr;
+    socklen_t addrlen;
+    h2o_hostconf_t **hosts;
+    int proxy_protocol;
+};
 
 struct h2o_nif_config_s {
     h2o_globalconf_t globalconf;
@@ -18,18 +32,11 @@ struct h2o_nif_config_s {
     ErlNifEnv *env;
 };
 
-struct h2o_nif_cfg_listen_s {
-    int fd;
-    struct sockaddr_storage addr;
-    socklen_t addrlen;
-    h2o_hostconf_t **hosts;
-    int proxy_protocol;
-};
+/* Config Functions */
 
 extern int h2o_nif_config_init(h2o_nif_config_t *config);
 extern void h2o_nif_config_dispose(h2o_nif_config_t *config);
-extern int h2o_nif_config_get(ErlNifEnv *env, h2o_nif_config_t *config, ERL_NIF_TERM *out);
-extern int h2o_nif_config_set(ErlNifEnv *env, h2o_nif_port_t *port, h2o_nif_config_t *config, ErlNifBinary *input,
-                              ERL_NIF_TERM *out);
+extern int h2o_nif_config_get(h2o_nif_config_t *config, ErlNifEnv *env, ERL_NIF_TERM *out);
+extern int h2o_nif_config_set(h2o_nif_config_t *config, ErlNifEnv *env, ErlNifBinary *input, ERL_NIF_TERM *out);
 
 #endif
