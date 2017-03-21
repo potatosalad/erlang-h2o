@@ -7,6 +7,10 @@
  * Erlang NIF functions
  */
 
+static ERL_NIF_TERM h2o_nif_port_close_1(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]);
+
+#include "h2o_nif/filter.c.h"
+#include "h2o_nif/handler.c.h"
 #include "h2o_nif/logger.c.h"
 #include "h2o_nif/port.c.h"
 #include "h2o_nif/server.c.h"
@@ -70,6 +74,16 @@ h2o_nif_unload(ErlNifEnv *env, void *priv_data)
 }
 
 static ErlNifFunc h2o_nif_funcs[] = {
+    // h2o_nif/filter.c.h
+    {"filter_read_start", 1, h2o_nif_filter_read_start_1},
+    {"filter_read", 1, h2o_nif_filter_read_1},
+    {"filter_event_setup_next_ostream", 1, h2o_nif_filter_event_setup_next_ostream_1},
+    // h2o_nif/handler.c.h
+    {"handler_read_start", 1, h2o_nif_handler_read_start_1},
+    {"handler_read", 1, h2o_nif_handler_read_1},
+    {"handler_event_reply", 4, h2o_nif_handler_event_reply_4},
+    {"handler_event_reply_batch", 1, h2o_nif_handler_event_reply_batch_1},
+    {"handler_event_reply_multi", 4, h2o_nif_handler_event_reply_multi_4},
     // h2o_nif/logger.c.h
     {"logger_read_start", 1, h2o_nif_logger_read_start_1},
     {"logger_read", 1, h2o_nif_logger_read_1},

@@ -14,6 +14,18 @@
 -export([monitor_ack/1]).
 -export([roundtrip/0]).
 
+%% h2o_nif/filter.c.h
+-export([filter_read_start/1]).
+-export([filter_read/1]).
+-export([filter_event_setup_next_ostream/1]).
+
+%% h2o_nif/handler.c.h
+-export([handler_read_start/1]).
+-export([handler_read/1]).
+-export([handler_event_reply/4]).
+-export([handler_event_reply_batch/1]).
+-export([handler_event_reply_multi/4]).
+
 %% h2o_nif/logger.c.h
 -export([logger_read_start/1]).
 -export([logger_read/1]).
@@ -82,6 +94,38 @@ monitor_ack(_USec) ->
 	erlang:nif_error({nif_not_loaded, ?MODULE}).
 
 roundtrip() ->
+	erlang:nif_error({nif_not_loaded, ?MODULE}).
+
+%%%===================================================================
+%%% h2o_nif/filter.c.h
+%%%===================================================================
+
+filter_read_start(_Port) ->
+	erlang:nif_error({nif_not_loaded, ?MODULE}).
+
+filter_read(_Port) ->
+	erlang:nif_error({nif_not_loaded, ?MODULE}).
+
+filter_event_setup_next_ostream(_Port) ->
+	erlang:nif_error({nif_not_loaded, ?MODULE}).
+
+%%%===================================================================
+%%% h2o_nif/handler.c.h
+%%%===================================================================
+
+handler_read_start(_Port) ->
+	erlang:nif_error({nif_not_loaded, ?MODULE}).
+
+handler_read(_Port) ->
+	erlang:nif_error({nif_not_loaded, ?MODULE}).
+
+handler_event_reply(_Port, _Status, _Headers, _Body) ->
+	erlang:nif_error({nif_not_loaded, ?MODULE}).
+
+handler_event_reply_batch(_List) ->
+	erlang:nif_error({nif_not_loaded, ?MODULE}).
+
+handler_event_reply_multi(_Port, _Status, _Headers, _Body) ->
 	erlang:nif_error({nif_not_loaded, ?MODULE}).
 
 %%%===================================================================

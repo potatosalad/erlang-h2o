@@ -24,6 +24,12 @@
 
 extern int erts_fprintf(FILE *, const char *, ...);
 
+#define DEBUG_F(...)                                                                                                               \
+    do {                                                                                                                           \
+        erts_fprintf(stderr, __VA_ARGS__);                                                                                         \
+        fflush(stderr);                                                                                                            \
+    } while (0)
+
 // #define TRACE 1
 #ifdef TRACE
 #define TRACE_C(c)                                                                                                                 \

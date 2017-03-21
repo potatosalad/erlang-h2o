@@ -203,8 +203,8 @@ h2o_nif_server_run_loop(void *arg)
     thread->ctx.thread = thread;
 
     h2o_loop_t *loop = h2o_evloop_create();
-    // thread->ipc_queue = h2o_nif_ipc_create_queue(loop);
-    // assert(thread->ipc_queue != NULL);
+    thread->ipc_queue = h2o_nif_ipc_create_queue(loop);
+    assert(thread->ipc_queue != NULL);
     (void)h2o_context_init(&thread->ctx.super, loop, &config->globalconf);
     (void)h2o_multithread_register_receiver(thread->ctx.super.queue, &thread->server_notifications, on_server_notification);
     (void)h2o_multithread_register_receiver(thread->ctx.super.queue, &thread->memcached, h2o_memcached_receiver);
@@ -275,8 +275,8 @@ h2o_nif_server_run_loop(void *arg)
     (void)context_clear_timeouts(&thread->ctx.super);
     (void)h2o_context_dispose(&thread->ctx.super);
 
-    // (void)h2o_nif_ipc_destroy_queue(thread->ipc_queue);
-    // thread->ipc_queue = NULL;
+    (void)h2o_nif_ipc_destroy_queue(thread->ipc_queue);
+    thread->ipc_queue = NULL;
 
     /* destroy the loop */
     (void)h2o_evloop_destroy(thread->ctx.super.loop);

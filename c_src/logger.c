@@ -3,10 +3,10 @@
 
 #include "logger.h"
 
-static void on_dispose(h2o_logger_t *super);
-static void on_log_access(h2o_logger_t *super, h2o_req_t *req);
 static void on_context_init(h2o_logger_t *super, h2o_context_t *context);
 static void on_context_dispose(h2o_logger_t *super, h2o_context_t *context);
+static void on_dispose(h2o_logger_t *super);
+static void on_log_access(h2o_logger_t *super, h2o_req_t *req);
 
 /* Types */
 
@@ -36,7 +36,7 @@ h2o_nif_logger_open(h2o_nif_server_t *server, h2o_pathconf_t *pathconf, h2o_nif_
     (void)atomic_init(&logger->ctx, (uintptr_t)NULL);
     (void)h2o_mem_addref_shared(lh);
     logger->lh = lh;
-    (void)atomic_init(&logger->state, H2O_NIF_LOGGER_STATE_PASSIVE);
+    logger->state = (atomic_flag)ATOMIC_FLAG_INIT;
     (void)ck_spinlock_init(&logger->spinlock);
     (void)h2o_linklist_init_anchor(&logger->events);
     (void)atomic_init(&logger->num_events, 0);
@@ -51,10 +51,10 @@ h2o_nif_logger_open(h2o_nif_server_t *server, h2o_pathconf_t *pathconf, h2o_nif_
     (void)atomic_store_explicit(&ctx->logger, (uintptr_t)logger, memory_order_relaxed);
     (void)atomic_store_explicit(&logger->ctx, (uintptr_t)ctx, memory_order_relaxed);
     ctx->super._config_slot = pathconf->global->_num_config_slots++;
-    ctx->super.dispose = on_dispose;
-    ctx->super.log_access = on_log_access;
     ctx->super.on_context_init = on_context_init;
     ctx->super.on_context_dispose = on_context_dispose;
+    ctx->super.dispose = on_dispose;
+    ctx->super.log_access = on_log_access;
     (void)h2o_nif_port_keep(&logger->super);
     logger->super.on_close.callback = h2o_nif_logger_on_close;
     *loggerp = logger;
@@ -108,6 +108,22 @@ h2o_nif_logger_register(ErlNifEnv *env, h2o_nif_server_t *server, h2o_pathconf_t
 }
 
 static void
+on_context_init(h2o_logger_t *super, h2o_context_t *context)
+{
+    h2o_nif_logger_data_t *data = enif_alloc(sizeof(*data));
+    data->env = enif_alloc_env();
+    (void)h2o_context_set_logger_context(context, super, data);
+}
+
+static void
+on_context_dispose(h2o_logger_t *super, h2o_context_t *context)
+{
+    h2o_nif_logger_data_t *data = h2o_context_get_logger_context(context, super);
+    (void)enif_free_env(data->env);
+    (void)enif_free(data);
+}
+
+static void
 on_dispose(h2o_logger_t *super)
 {
     h2o_nif_logger_ctx_t *ctx = (h2o_nif_logger_ctx_t *)super;
@@ -134,8 +150,6 @@ on_log_access(h2o_logger_t *super, h2o_req_t *req)
     char *logline;
     char buf[4096];
     size_t len;
-    // ErlNifEnv *env = enif_alloc_env();
-    // ERL_NIF_TERM msg;
 
     /* stringify */
     len = sizeof(buf);
@@ -143,46 +157,28 @@ on_log_access(h2o_logger_t *super, h2o_req_t *req)
 
     /* emit */
     {
-        ErlNifBinary tmpbin;
-        h2o_nif_logger_event_t *event;
-        (void)enif_alloc_binary(sizeof(h2o_nif_logger_event_t) + len, &tmpbin);
-        // TRACE_F("binary size: %lu -> %lu\n", len, tmpbin.size);
-        event = (h2o_nif_logger_event_t *)tmpbin.data;
+        ErlNifBinary binary;
+        h2o_nif_logger_event_t *event = NULL;
+        assert(enif_alloc_binary(sizeof(h2o_nif_logger_event_t) + len, &binary));
+        event = (h2o_nif_logger_event_t *)binary.data;
         event->_link.next = event->_link.prev = NULL;
-        event->binary = tmpbin;
-        // event->binary.data = tmpbin.data + sizeof(h2o_nif_logger_event_t);
-        // event->binary.size = len;
-        (void)memcpy(tmpbin.data + sizeof(h2o_nif_logger_event_t), logline, len);
+        event->binary = binary;
+        (void)memcpy(binary.data + sizeof(h2o_nif_logger_event_t), logline, len);
         (void)atomic_fetch_add_explicit(&logger->num_events, 1, memory_order_relaxed);
         (void)ck_spinlock_lock_eb(&logger->spinlock);
         (void)h2o_linklist_insert(&logger->events, &event->_link);
         (void)ck_spinlock_unlock(&logger->spinlock);
     }
-    {
-        int expected = H2O_NIF_LOGGER_STATE_NOTIFY;
-        int desired = H2O_NIF_LOGGER_STATE_ACTIVE;
-        // TRACE_F("logger->state: %d\n", atomic_load_explicit(&logger->state, memory_order_relaxed));
-        // ERL_NIF_TERM out
-        // unsigned char *out_buf = enif_make_new_binary()
-        if (atomic_compare_exchange_weak_explicit(&logger->state, &expected, desired, memory_order_relaxed, memory_order_relaxed)) {
-            h2o_nif_logger_data_t *logger_data = h2o_context_get_logger_context(req->conn->ctx, super);
-            ErlNifEnv *env = logger_data->env;
-            ERL_NIF_TERM msg;
-            msg = enif_make_tuple3(env, ATOM_h2o_port_data, h2o_nif_port_make(env, &logger->super), ATOM_ready_input);
-            if (!h2o_nif_port_send(NULL, &logger->super, env, msg)) {
-                expected = H2O_NIF_LOGGER_STATE_ACTIVE;
-                desired = H2O_NIF_LOGGER_STATE_NOTIFY;
-                (void)atomic_compare_exchange_weak_explicit(&logger->state, &expected, desired, memory_order_relaxed, memory_order_relaxed);
-            }
-            (void)enif_clear_env(env);
+    if (!atomic_flag_test_and_set_explicit(&logger->state, memory_order_relaxed)) {
+        h2o_nif_logger_data_t *logger_data = h2o_context_get_logger_context(req->conn->ctx, super);
+        ErlNifEnv *env = logger_data->env;
+        ERL_NIF_TERM msg;
+        msg = enif_make_tuple3(env, ATOM_h2o_port_data, h2o_nif_port_make(env, &logger->super), ATOM_ready_input);
+        if (!h2o_nif_port_send(NULL, &logger->super, env, msg)) {
+            (void)atomic_flag_clear_explicit(&logger->state, memory_order_relaxed);
         }
+        (void)enif_clear_env(env);
     }
-
-    // unsigned char *msg_buf = enif_make_new_binary(env, len, &msg);
-    // (void)memcpy(msg_buf, logline, len);
-    // msg = enif_make_tuple3(env, ATOM_h2o_port_data, h2o_nif_port_make(env, &logger->super), msg);
-    // (void)h2o_nif_port_send(NULL, &logger->super, env, msg);
-    // (void)enif_free_env(env);
 
     /* free memory */
     if (logline != buf) {
@@ -190,20 +186,4 @@ on_log_access(h2o_logger_t *super, h2o_req_t *req)
     }
 
     return;
-}
-
-static void
-on_context_init(h2o_logger_t *super, h2o_context_t *context)
-{
-    h2o_nif_logger_data_t *data = enif_alloc(sizeof(*data));
-    data->env = enif_alloc_env();
-    (void)h2o_context_set_logger_context(context, super, data);
-}
-
-static void
-on_context_dispose(h2o_logger_t *super, h2o_context_t *context)
-{
-    h2o_nif_logger_data_t *data = h2o_context_get_logger_context(context, super);
-    (void)enif_free_env(data->env);
-    (void)enif_free(data);
 }

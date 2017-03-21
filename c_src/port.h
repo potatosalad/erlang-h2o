@@ -29,6 +29,8 @@
 #define H2O_NIF_PORT_TYPE_HANDLER 3
 #define H2O_NIF_PORT_TYPE_LOGGER 4
 #define H2O_NIF_PORT_TYPE_REQUEST 5
+#define H2O_NIF_PORT_TYPE_FILTER_EVENT 6
+#define H2O_NIF_PORT_TYPE_HANDLER_EVENT 7
 
 /* Variables */
 
@@ -51,6 +53,7 @@ struct h2o_nif_port_s {
     _Atomic int num_children;
     struct {
         int state;
+        int silent;
         h2o_nif_port_on_close_t *callback;
         void *data;
     } on_close;
@@ -108,6 +111,7 @@ h2o_nif_port_release(h2o_nif_port_t *port)
 
 extern int h2o_nif_port_open(h2o_nif_port_t *parent, size_t size, h2o_nif_port_t **portp);
 extern int h2o_nif_port_close(h2o_nif_port_t *port, ErlNifEnv *env, ERL_NIF_TERM *out);
+extern int h2o_nif_port_close_silent(h2o_nif_port_t *port, ErlNifEnv *env, ERL_NIF_TERM *out);
 extern int __h2o_nif_port_close(h2o_nif_port_t *port, ErlNifEnv *env, ERL_NIF_TERM *out);
 static ErlNifPid h2o_nif_port_get_owner(h2o_nif_port_t *port);
 static void h2o_nif_port_set_owner(h2o_nif_port_t *port, ErlNifPid new_owner);

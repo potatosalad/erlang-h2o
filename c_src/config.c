@@ -42,8 +42,8 @@
 #include <h2o/serverutil.h>
 // #include "standalone.h"
 
-// #include "filter.h"
-// #include "handler.h"
+#include "filter.h"
+#include "handler.h"
 #include "logger.h"
 
 #ifdef TCP_FASTOPEN
@@ -53,6 +53,26 @@
 #endif
 
 /* Types */
+
+typedef struct h2o_nif_filter_configurator_s h2o_nif_filter_configurator_t;
+
+typedef H2O_VECTOR(h2o_nif_filter_handle_t *) h2o_nif_filter_handle_vector_t;
+
+struct h2o_nif_filter_configurator_s {
+    h2o_configurator_t super;
+    h2o_nif_filter_handle_vector_t *handles;
+    h2o_nif_filter_handle_vector_t _handles_stack[H2O_CONFIGURATOR_NUM_LEVELS + 1];
+};
+
+typedef struct h2o_nif_handler_configurator_s h2o_nif_handler_configurator_t;
+
+typedef H2O_VECTOR(h2o_nif_handler_handle_t *) h2o_nif_handler_handle_vector_t;
+
+struct h2o_nif_handler_configurator_s {
+    h2o_configurator_t super;
+    h2o_nif_handler_handle_vector_t *handles;
+    h2o_nif_handler_handle_vector_t _handles_stack[H2O_CONFIGURATOR_NUM_LEVELS + 1];
+};
 
 typedef struct h2o_nif_logger_configurator_s h2o_nif_logger_configurator_t;
 
@@ -67,6 +87,14 @@ struct h2o_nif_logger_configurator_s {
 /* Config Commands (Declarations) */
 
 static yoml_t *load_config(yoml_parse_args_t *parse_args, yaml_char_t *input, size_t size);
+static int on_config_erlang_filter(h2o_configurator_command_t *cmd, h2o_configurator_context_t *ctx, yoml_t *node);
+static void on_config_erlang_filter_dispose_handle(void *_fh);
+static int on_config_erlang_filter_enter(h2o_configurator_t *super, h2o_configurator_context_t *ctx, yoml_t *node);
+static int on_config_erlang_filter_exit(h2o_configurator_t *super, h2o_configurator_context_t *ctx, yoml_t *node);
+static int on_config_erlang_handler(h2o_configurator_command_t *cmd, h2o_configurator_context_t *ctx, yoml_t *node);
+static void on_config_erlang_handler_dispose_handle(void *_hh);
+static int on_config_erlang_handler_enter(h2o_configurator_t *super, h2o_configurator_context_t *ctx, yoml_t *node);
+static int on_config_erlang_handler_exit(h2o_configurator_t *super, h2o_configurator_context_t *ctx, yoml_t *node);
 static int on_config_erlang_logger(h2o_configurator_command_t *cmd, h2o_configurator_context_t *ctx, yoml_t *node);
 static void on_config_erlang_logger_dispose_handle(void *_lh);
 static int on_config_erlang_logger_enter(h2o_configurator_t *super, h2o_configurator_context_t *ctx, yoml_t *node);
@@ -139,6 +167,20 @@ h2o_nif_config_init(h2o_nif_config_t *config)
     (void)h2o_compress_register_configurator(&config->globalconf);
     (void)h2o_file_register_configurator(&config->globalconf);
     (void)h2o_status_register_configurator(&config->globalconf);
+    {
+        h2o_nif_filter_configurator_t *c = (h2o_nif_filter_configurator_t *)h2o_configurator_create(&config->globalconf, sizeof(*c));
+        c->super.enter = on_config_erlang_filter_enter;
+        c->super.exit = on_config_erlang_filter_exit;
+        c->handles = c->_handles_stack;
+        (void)h2o_configurator_define_command(&c->super, "erlang.filter", H2O_CONFIGURATOR_FLAG_ALL_LEVELS, on_config_erlang_filter);
+    }
+    {
+        h2o_nif_handler_configurator_t *c = (h2o_nif_handler_configurator_t *)h2o_configurator_create(&config->globalconf, sizeof(*c));
+        c->super.enter = on_config_erlang_handler_enter;
+        c->super.exit = on_config_erlang_handler_exit;
+        c->handles = c->_handles_stack;
+        (void)h2o_configurator_define_command(&c->super, "erlang.handler", H2O_CONFIGURATOR_FLAG_PATH | H2O_CONFIGURATOR_FLAG_DEFERRED | H2O_CONFIGURATOR_FLAG_EXPECT_SCALAR, on_config_erlang_handler);
+    }
     {
         h2o_nif_logger_configurator_t *c = (h2o_nif_logger_configurator_t *)h2o_configurator_create(&config->globalconf, sizeof(*c));
         c->super.enter = on_config_erlang_logger_enter;
@@ -283,6 +325,210 @@ load_config(yoml_parse_args_t *parse_args, yaml_char_t *input, size_t size)
 
     return yoml;
 }
+
+/* BEGIN: erlang.filter */
+
+static int
+on_config_erlang_filter(h2o_configurator_command_t *cmd, h2o_configurator_context_t *ctx, yoml_t *node)
+{
+    TRACE_F("on_config_erlang_filter:%s:%d\n", __FILE__, __LINE__);
+
+    h2o_nif_filter_configurator_t *c = (h2o_nif_filter_configurator_t *)cmd->configurator;
+    h2o_nif_config_t *config = (h2o_nif_config_t *)ctx->globalconf;
+    h2o_iovec_t reference_iov;
+    ERL_NIF_TERM reference_term;
+    /* get reference */
+    if (node->type != YOML_TYPE_SCALAR) {
+        (void)h2o_configurator_errprintf(cmd, node, "`erlang.filter` must be a scalar");
+        return -1;
+    }
+    reference_iov = h2o_decode_base64url(NULL, node->data.scalar, strlen(node->data.scalar));
+    if (reference_iov.base == NULL) {
+        (void)h2o_configurator_errprintf(cmd, node, "`erlang.filter` has invalid Base64URL encoding");
+        return -1;
+    }
+    if (!enif_binary_to_term(config->env, (const unsigned char *)reference_iov.base, reference_iov.len, &reference_term, ERL_NIF_BIN2TERM_SAFE)) {
+        (void)h2o_configurator_errprintf(cmd, node, "`erlang.filter` must be an erlang reference");
+        (void)free(reference_iov.base);
+        return -1;
+    }
+    if (!enif_is_ref(config->env, reference_term)) {
+        (void)h2o_configurator_errprintf(cmd, node, "`erlang.filter` must be an erlang reference");
+        (void)free(reference_iov.base);
+        return -1;
+    }
+    (void)free(reference_iov.base);
+    /* create filter handle */
+    h2o_nif_filter_handle_t *fh = h2o_mem_alloc_shared(NULL, sizeof(*fh), on_config_erlang_filter_dispose_handle);
+    if (fh == NULL) {
+        return -1;
+    }
+    fh->reference = reference_term;
+    (void)h2o_vector_reserve(NULL, c->handles, c->handles->size + 1);
+    c->handles->entries[c->handles->size++] = fh;
+
+    return 0;
+}
+
+static void
+on_config_erlang_filter_dispose_handle(void *_fh)
+{
+    TRACE_F("on_config_erlang_filter_dispose_handle:%s:%d\n", __FILE__, __LINE__);
+    // h2o_nif_filter_handle_t *fh = _fh;
+}
+
+static int
+on_config_erlang_filter_enter(h2o_configurator_t *super, h2o_configurator_context_t *ctx, yoml_t *node)
+{
+    TRACE_F("on_config_erlang_filter_enter:%s:%d\n", __FILE__, __LINE__);
+    h2o_nif_filter_configurator_t *c = (h2o_nif_filter_configurator_t *)super;
+    size_t i;
+
+    /* push the stack pointer */
+    ++c->handles;
+
+    /* link the handles */
+    (void)memset(c->handles, 0, sizeof(*c->handles));
+    (void)h2o_vector_reserve(NULL, c->handles, c->handles[-1].size + 1);
+    for (i = 0; i != c->handles[-1].size; ++i) {
+        h2o_nif_filter_handle_t *fh = c->handles[-1].entries[i];
+        c->handles[0].entries[c->handles[0].size++] = fh;
+        (void)h2o_mem_addref_shared(fh);
+    }
+
+    return 0;
+}
+
+static int
+on_config_erlang_filter_exit(h2o_configurator_t *super, h2o_configurator_context_t *ctx, yoml_t *node)
+{
+    TRACE_F("on_config_erlang_filter_exit:%s:%d\n", __FILE__, __LINE__);
+    h2o_nif_filter_configurator_t *c = (h2o_nif_filter_configurator_t *)super;
+    h2o_nif_config_t *config = (h2o_nif_config_t *)ctx->globalconf;
+    h2o_nif_server_t *server = H2O_STRUCT_FROM_MEMBER(h2o_nif_server_t, config, config);
+    size_t i;
+
+    /* register all handles, and decref them */
+    for (i = 0; i != c->handles->size; ++i) {
+        h2o_nif_filter_handle_t *fh = c->handles->entries[i];
+        if (ctx->pathconf != NULL) {
+            (void)h2o_nif_filter_register(config->env, server, ctx->pathconf, fh);
+        }
+        (void)h2o_mem_release_shared(fh);
+    }
+    /* free the vector */
+    (void)free(c->handles->entries);
+
+    /* pop the stack pointer */
+    --c->handles;
+
+    return 0;
+}
+
+/* END: erlang.filter */
+
+/* BEGIN: erlang.handler */
+
+static int
+on_config_erlang_handler(h2o_configurator_command_t *cmd, h2o_configurator_context_t *ctx, yoml_t *node)
+{
+    TRACE_F("on_config_erlang_handler:%s:%d\n", __FILE__, __LINE__);
+
+    h2o_nif_handler_configurator_t *c = (h2o_nif_handler_configurator_t *)cmd->configurator;
+    h2o_nif_config_t *config = (h2o_nif_config_t *)ctx->globalconf;
+    h2o_iovec_t reference_iov;
+    ERL_NIF_TERM reference_term;
+    /* get reference */
+    if (node->type != YOML_TYPE_SCALAR) {
+        (void)h2o_configurator_errprintf(cmd, node, "`erlang.handler` must be a scalar");
+        return -1;
+    }
+    reference_iov = h2o_decode_base64url(NULL, node->data.scalar, strlen(node->data.scalar));
+    if (reference_iov.base == NULL) {
+        (void)h2o_configurator_errprintf(cmd, node, "`erlang.handler` has invalid Base64URL encoding");
+        return -1;
+    }
+    if (!enif_binary_to_term(config->env, (const unsigned char *)reference_iov.base, reference_iov.len, &reference_term, ERL_NIF_BIN2TERM_SAFE)) {
+        (void)h2o_configurator_errprintf(cmd, node, "`erlang.handler` must be an erlang reference");
+        (void)free(reference_iov.base);
+        return -1;
+    }
+    if (!enif_is_ref(config->env, reference_term)) {
+        (void)h2o_configurator_errprintf(cmd, node, "`erlang.handler` must be an erlang reference");
+        (void)free(reference_iov.base);
+        return -1;
+    }
+    (void)free(reference_iov.base);
+    /* create handler handle */
+    h2o_nif_handler_handle_t *hh = h2o_mem_alloc_shared(NULL, sizeof(*hh), on_config_erlang_handler_dispose_handle);
+    if (hh == NULL) {
+        return -1;
+    }
+    hh->reference = reference_term;
+    (void)h2o_vector_reserve(NULL, c->handles, c->handles->size + 1);
+    c->handles->entries[c->handles->size++] = hh;
+
+    return 0;
+}
+
+static void
+on_config_erlang_handler_dispose_handle(void *_hh)
+{
+    TRACE_F("on_config_erlang_handler_dispose_handle:%s:%d\n", __FILE__, __LINE__);
+    // h2o_nif_handler_handle_t *hh = _hh;
+}
+
+static int
+on_config_erlang_handler_enter(h2o_configurator_t *super, h2o_configurator_context_t *ctx, yoml_t *node)
+{
+    TRACE_F("on_config_erlang_handler_enter:%s:%d\n", __FILE__, __LINE__);
+    h2o_nif_handler_configurator_t *c = (h2o_nif_handler_configurator_t *)super;
+    size_t i;
+
+    /* push the stack pointer */
+    ++c->handles;
+
+    /* link the handles */
+    (void)memset(c->handles, 0, sizeof(*c->handles));
+    (void)h2o_vector_reserve(NULL, c->handles, c->handles[-1].size + 1);
+    for (i = 0; i != c->handles[-1].size; ++i) {
+        h2o_nif_handler_handle_t *hh = c->handles[-1].entries[i];
+        c->handles[0].entries[c->handles[0].size++] = hh;
+        (void)h2o_mem_addref_shared(hh);
+    }
+
+    return 0;
+}
+
+static int
+on_config_erlang_handler_exit(h2o_configurator_t *super, h2o_configurator_context_t *ctx, yoml_t *node)
+{
+    TRACE_F("on_config_erlang_handler_exit:%s:%d\n", __FILE__, __LINE__);
+    h2o_nif_handler_configurator_t *c = (h2o_nif_handler_configurator_t *)super;
+    h2o_nif_config_t *config = (h2o_nif_config_t *)ctx->globalconf;
+    h2o_nif_server_t *server = H2O_STRUCT_FROM_MEMBER(h2o_nif_server_t, config, config);
+    size_t i;
+
+    /* register all handles, and decref them */
+    for (i = 0; i != c->handles->size; ++i) {
+        h2o_nif_handler_handle_t *hh = c->handles->entries[i];
+        if (ctx->pathconf != NULL) {
+            (void)h2o_nif_handler_register(config->env, server, ctx->pathconf, hh);
+        }
+        (void)h2o_mem_release_shared(hh);
+    }
+    /* free the vector */
+    (void)free(c->handles->entries);
+
+    /* pop the stack pointer */
+    --c->handles;
+
+    return 0;
+}
+
+/* END: erlang.handler */
+
+/* BEGIN: erlang.logger */
 
 static int
 on_config_erlang_logger(h2o_configurator_command_t *cmd, h2o_configurator_context_t *ctx, yoml_t *node)
@@ -434,6 +680,8 @@ on_config_erlang_logger_exit(h2o_configurator_t *super, h2o_configurator_context
 
     return 0;
 }
+
+/* END: erlang.logger */
 
 static int
 on_config_error_log(h2o_configurator_command_t *cmd, h2o_configurator_context_t *ctx, yoml_t *node)

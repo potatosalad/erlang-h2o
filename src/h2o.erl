@@ -10,6 +10,7 @@
 %%%-------------------------------------------------------------------
 -module(h2o).
 
+-export([flush_handler/1]).
 -export([flush_logger/1]).
 -export([reductions/3]).
 -export([start/0]).
@@ -25,8 +26,74 @@
 % -export([request_reply/1]).
 % -export([get_handler/1]).
 
+flush_handler(Port) ->
+	Status = 200,
+	Headers = #{
+		<<"content-length">> => <<"12">>,
+		<<"content-type">> => <<"text/plain">>
+	},
+	Body = <<"Hello world!">>,
+	flush_handler(Port, Status, Headers, 0, Body).
+
+%% @private
+flush_handler(Port, Status, Headers, N, Body) ->
+	receive
+		{h2o_port_data, Port, ready_input} ->
+			% ok = h2o_nif:handler_event_reply_multi(h2o_nif:handler_read(Port), Status, Headers, Body),
+			% flush_handler(Port, Status, Headers, Body)
+			% ok = flush_out(),
+			flush_handler(h2o_nif:handler_read(Port), Port, Status, Headers, Body, N, [])
+			% _ = spawn(fun() ->
+				% flush_handler(h2o_nif:handler_read(Port), Port, Status, Headers, Body)
+			% end),
+			% flush_handler(Port, Status, Headers, Body)
+		% ready_input ->
+			% flush_handler(h2o_nif:handler_read(Port), Port, Status, Headers, Body)
+	end.
+
+% %% @private
+% flush_out() ->
+% 	receive
+% 		Message ->
+% 			io:format("Shell got ~p~n", [Message]),
+% 			flush_out()
+% 	after
+% 		0 ->
+% 			ok
+% 	end.
+
+%% @private
+flush_handler([Event | Events], Port, Status, Headers, Body, N, Acc) ->
+	NewBody = [Body, integer_to_binary(N)],
+	% NewBody = << Body/binary, (integer_to_binary(N))/binary >>,
+	% NewHeaders = #{
+	% 	<<"content-length">> => integer_to_binary(iolist_size(NewBody)),
+	% 	<<"content-type">> => <<"text/plain">>
+	% },
+	NewHeaders = Headers#{<<"content-length">> => integer_to_binary(iolist_size(NewBody))},
+	flush_handler(Events, Port, Status, Headers, Body, N + 1, [{Event, Status, NewHeaders, NewBody} | Acc]);
+flush_handler([], Port, Status, Headers, Body, N, Acc) ->
+	ok = h2o_nif:handler_event_reply_batch(Acc),
+	flush_handler(Port, Status, Headers, N, Body).
+
+% %% @private
+% flush_handler([Event | Events], Port, Status, Headers, Body, N, Acc) ->
+% 	flush_handler(Events, Port, Status, Headers, Body, N + 1, [{Event, Status, Headers, Body} | Acc]);
+% flush_handler([], Port, Status, Headers, Body, _N, Acc) ->
+% 	ok = h2o_nif:handler_event_reply_batch(Acc),
+% 	flush_handler(Port, Status, Headers, Body).
+
+% %% @private
+% flush_handler([Event | Events], Port, Status, Headers, Body) ->
+% 	ok = h2o_nif:handler_event_reply(Event, Status, Headers, Body),
+% 	flush_handler(Events, Port, Status, Headers, Body);
+% % flush_handler([], _Port, _Status, _Headers, _Body) ->
+% 	% ok.
+% flush_handler([], Port, Status, Headers, Body) ->
+% 	flush_handler(Port, Status, Headers, Body).
+
 flush_logger(Port) ->
-	ok = h2o_nif:logger_read_start(Port),
+	% ok = h2o_nif:logger_read_start(Port),
 	receive
 		{h2o_port_data, Port, ready_input} ->
 			io:format("~p~n", [h2o:reductions(h2o_nif, logger_read, [Port])]),
@@ -60,12 +127,14 @@ example() ->
 	Config = [
 		{<<"listen">>, 8080},
 		{<<"num-threads">>, 1},
-		{<<"erlang.logger">>, {toppage_logger, []}},%, <<"%h\1%l\1%u\1%t\1%r\1%s\1%b\1%{Referer}i\1%{User-agent}i\1">>, apache}},
+		% {<<"erlang.logger">>, {toppage_logger, []}},%, <<"%h\1%l\1%u\1%t\1%r\1%s\1%b\1%{Referer}i\1%{User-agent}i\1">>, apache}},
+		% {<<"erlang.filter">>, {toppage_filter, []}},
 		{<<"hosts">>, [
 			{<<"*">>, [
 				{<<"paths">>, [
 					{<<"/">>, [
-						{<<"file.dir">>, <<"/Users/andrew/Documents">>}
+						{<<"erlang.handler">>, {toppage_handler, []}}
+						% {<<"file.dir">>, <<"/Users/andrew/Documents">>}
 					]}
 				]}
 			]}

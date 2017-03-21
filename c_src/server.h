@@ -7,7 +7,7 @@
 #include "globals.h"
 #include "port.h"
 #include "config.h"
-// #include "ipc.h"
+#include "ipc.h"
 
 /* Types */
 
@@ -35,7 +35,7 @@ struct h2o_nif_srv_thread_s {
     h2o_multithread_receiver_t server_notifications;
     h2o_multithread_receiver_t memcached;
     // h2o_multithread_receiver_t erlang;
-    // h2o_nif_ipc_queue_t *ipc_queue;
+    h2o_nif_ipc_queue_t *ipc_queue;
 };
 
 struct h2o_nif_server_s {
@@ -80,5 +80,13 @@ extern int h2o_nif_server_open(h2o_nif_server_t **serverp);
 /* Server Functions */
 
 extern int h2o_nif_server_start(h2o_nif_server_t *server);
+static int h2o_nif_ipc_request(h2o_req_t *req, h2o_nif_ipc_callback_t *callback, void *data);
+
+inline int
+h2o_nif_ipc_request(h2o_req_t *req, h2o_nif_ipc_callback_t *callback, void *data)
+{
+    h2o_nif_srv_thread_ctx_t *ctx = (h2o_nif_srv_thread_ctx_t *)req->conn->ctx;
+    return h2o_nif_ipc_send(ctx->thread->ipc_queue, callback, data);
+}
 
 #endif

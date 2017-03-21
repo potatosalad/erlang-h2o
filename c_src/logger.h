@@ -8,10 +8,6 @@
 #include "port.h"
 #include "server.h"
 
-#define H2O_NIF_LOGGER_STATE_PASSIVE (0)
-#define H2O_NIF_LOGGER_STATE_NOTIFY (1)
-#define H2O_NIF_LOGGER_STATE_ACTIVE (2)
-
 /* Types */
 
 typedef struct h2o_nif_logger_s h2o_nif_logger_t;
@@ -38,7 +34,7 @@ struct h2o_nif_logger_s {
     h2o_nif_port_t super;
     _Atomic uintptr_t ctx;
     h2o_nif_logger_handle_t *lh;
-    _Atomic int state;
+    atomic_flag state;
     ck_spinlock_t spinlock;
     h2o_linklist_t events;
     _Atomic unsigned long num_events;

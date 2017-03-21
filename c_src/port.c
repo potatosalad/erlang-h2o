@@ -100,6 +100,22 @@ h2o_nif_port_close(h2o_nif_port_t *port, ErlNifEnv *env, ERL_NIF_TERM *out)
     return (__h2o_nif_port_close(port, env, out));
 }
 
+int
+h2o_nif_port_close_silent(h2o_nif_port_t *port, ErlNifEnv *env, ERL_NIF_TERM *out)
+{
+    int state = __h2o_nif_port_fetch_and_swap_state(port, H2O_NIF_PORT_STATE_CLOSED);
+    if (state == H2O_NIF_PORT_STATE_CLOSED) {
+        // Already closed by another thread
+        if (out != NULL) {
+            *out = ATOM_ok;
+        }
+        return 0;
+    }
+    port->on_close.state = state;
+    port->on_close.silent = 1;
+    return (__h2o_nif_port_close(port, env, out));
+}
+
 static ERL_NIF_TERM
 __h2o_nif_port_close_immediate(ErlNifEnv *env, h2o_nif_port_t *port, int is_direct_call)
 {
@@ -145,7 +161,7 @@ __h2o_nif_port_close(h2o_nif_port_t *port, ErlNifEnv *env, ERL_NIF_TERM *out)
         port->on_close.callback = NULL;
     }
     // Send closed message to owner if port was open
-    if ((port->on_close.state & H2O_NIF_PORT_STATE_OPEN) == H2O_NIF_PORT_STATE_OPEN) {
+    if (((port->on_close.state & H2O_NIF_PORT_STATE_OPEN) == H2O_NIF_PORT_STATE_OPEN) && !port->on_close.silent) {
         ErlNifEnv *msg_env = (is_direct_call) ? env : enif_alloc_env();
         ERL_NIF_TERM msg = enif_make_tuple2(msg_env, ATOM_h2o_port_closed, h2o_nif_port_make(msg_env, port));
         if (is_direct_call) {
