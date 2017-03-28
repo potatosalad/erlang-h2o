@@ -10,12 +10,16 @@
 %%%-------------------------------------------------------------------
 -module(h2o).
 
+-include("h2o_req.hrl").
+
 -export([flush_handler/1]).
 -export([flush_logger/1]).
 -export([reductions/3]).
 -export([start/0]).
 -export([roundtrip/0]).
 -export([example/0]).
+-export([example2/0]).
+-export([example3/0]).
 % -export([server_open/0]).
 % -export([server_getcfg/1]).
 % -export([server_setcfg/2]).
@@ -25,6 +29,22 @@
 % -export([handler_accept/2]).
 % -export([request_reply/1]).
 % -export([get_handler/1]).
+
+%% Types
+-type http_cookies() :: #{binary() => iodata()}.
+-export_type([http_cookies/0]).
+
+-type http_headers() :: [{iodata(), iodata()}] | #{iodata() => iodata()}.
+-export_type([http_headers/0]).
+
+-type http_reason() :: iodata().
+-export_type([http_reason/0]).
+
+-type http_status() :: non_neg_integer().
+-export_type([http_status/0]).
+
+-type http_version() :: 'HTTP/2' | 'HTTP/1.1' | 'HTTP/1.0'.
+-export_type([http_version/0]).
 
 flush_handler(Port) ->
 	Status = 200,
@@ -144,6 +164,38 @@ example() ->
 	{ok, Bindings} = h2o_server:setcfg(Server, Config),
 	ok = h2o_server:start(Server),
 	{ok, Server, Bindings}.
+
+example2() ->
+	{ok, _Server, Bindings} = h2o:example(),
+	[{Module, Port, Path, Opts}] = Bindings,
+	{ok, H} = Module:start_link(Port, Path, Opts),
+	ok = h2o_port:controlling_process(Port, H),
+	H ! {shoot, self(), Port},
+	ok.
+
+example3() ->
+	Config = [
+		{<<"listen">>, 8080},
+		{<<"num-threads">>, 1},
+		{<<"hosts">>, [
+			{<<"*">>, [
+				{<<"paths">>, [
+					{<<"/">>, [
+						{<<"file.dir">>, <<"/Users/andrew/Documents">>},
+						{<<"erlang.filter">>, {toppage_filter, []}}
+					]}
+				]}
+			]}
+		]}
+	],
+	{ok, Server} = h2o_server:open(),
+	{ok, Bindings} = h2o_server:setcfg(Server, Config),
+	ok = h2o_server:start(Server),
+	[{Module, Port, Path, Opts}] = Bindings,
+	{ok, F} = Module:start_link(Port, Path, Opts),
+	ok = h2o_port:controlling_process(Port, F),
+	F ! {shoot, self(), Port},
+	ok.
 
 	% Config = [
 	% 	{<<"listen">>, 8080},

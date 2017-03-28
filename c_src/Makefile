@@ -350,6 +350,6 @@ distclean-deps:
 	$(gen_verbose) rm -rf $(C_DEPS_DIR)
 
 clang-format-all:
-	$(gen_verbose) clang-format -i *.c *.h h2o_nif/*.c.h
+	$(gen_verbose) clang-format -i *.c *.h batch/*.c.h h2o_nif/*.c.h
 
 -include $(C_SRC_ENV)

@@ -2,6 +2,7 @@
 // vim: ts=4 sw=4 ft=c et
 
 #include "globals.h"
+#include "batch.h"
 #include "port.h"
 #include "slice.h"
 
@@ -15,6 +16,8 @@ ErlNifMutex *h2o_nif_mutex = NULL;
 ErlNifRWLock *h2o_nif_rwlock = NULL;
 h2o_sem_t h2o_ocsp_updater_semaphore;
 
+ERL_NIF_TERM ATOM_$gen_call;
+ERL_NIF_TERM ATOM_$gen_cast;
 ERL_NIF_TERM ATOM_accept;
 ERL_NIF_TERM ATOM_active;
 ERL_NIF_TERM ATOM_already_started;
@@ -24,9 +27,15 @@ ERL_NIF_TERM ATOM_children;
 ERL_NIF_TERM ATOM_closed;
 ERL_NIF_TERM ATOM_configured;
 ERL_NIF_TERM ATOM_connected;
+ERL_NIF_TERM ATOM_continue;
 ERL_NIF_TERM ATOM_eagain;
+ERL_NIF_TERM ATOM_entity;
 ERL_NIF_TERM ATOM_error;
 ERL_NIF_TERM ATOM_false;
+ERL_NIF_TERM ATOM_filter;
+ERL_NIF_TERM ATOM_fin;
+ERL_NIF_TERM ATOM_final_input;
+ERL_NIF_TERM ATOM_finalize;
 ERL_NIF_TERM ATOM_finalized;
 ERL_NIF_TERM ATOM_gc_avg;
 ERL_NIF_TERM ATOM_gc_max;
@@ -35,14 +44,25 @@ ERL_NIF_TERM ATOM_h2o_handler;
 ERL_NIF_TERM ATOM_h2o_port;
 ERL_NIF_TERM ATOM_h2o_port_closed;
 ERL_NIF_TERM ATOM_h2o_port_data;
+ERL_NIF_TERM ATOM_h2o_req;
+ERL_NIF_TERM ATOM_h2o_res;
+ERL_NIF_TERM ATOM_handler_event_read_body;
+ERL_NIF_TERM ATOM_handler_event_reply;
+ERL_NIF_TERM ATOM_handler_event_stream_body;
+ERL_NIF_TERM ATOM_handler_event_stream_reply;
 ERL_NIF_TERM ATOM_hm_stat;
+ERL_NIF_TERM ATOM_HTTP_1_0;
+ERL_NIF_TERM ATOM_HTTP_1_1;
+ERL_NIF_TERM ATOM_HTTP_2;
 ERL_NIF_TERM ATOM_in_progress;
 ERL_NIF_TERM ATOM_listening;
 ERL_NIF_TERM ATOM_max;
 ERL_NIF_TERM ATOM_mem_info;
 ERL_NIF_TERM ATOM_min;
+ERL_NIF_TERM ATOM_more;
 ERL_NIF_TERM ATOM_n_buckets;
 ERL_NIF_TERM ATOM_nil;
+ERL_NIF_TERM ATOM_nofin;
 ERL_NIF_TERM ATOM_num_accept;
 ERL_NIF_TERM ATOM_num_children;
 ERL_NIF_TERM ATOM_num_listen;
@@ -52,8 +72,12 @@ ERL_NIF_TERM ATOM_ok;
 ERL_NIF_TERM ATOM_once;
 ERL_NIF_TERM ATOM_open;
 ERL_NIF_TERM ATOM_parent;
+ERL_NIF_TERM ATOM_port_connect;
 ERL_NIF_TERM ATOM_ports_stat;
 ERL_NIF_TERM ATOM_ready_input;
+ERL_NIF_TERM ATOM_reply;
+ERL_NIF_TERM ATOM_requested;
+ERL_NIF_TERM ATOM_send_data;
 ERL_NIF_TERM ATOM_seq;
 ERL_NIF_TERM ATOM_seq_ports;
 ERL_NIF_TERM ATOM_size;
@@ -69,11 +93,16 @@ ERL_NIF_TERM ATOM_undefined;
 int
 h2o_nif_globals_load(ErlNifEnv *env, h2o_nif_data_t *nif_data)
 {
+    if (h2o_nif_batch_load(env, nif_data) != 0) {
+        return -1;
+    }
     if (h2o_nif_port_load(env, nif_data) != 0) {
+        (void)h2o_nif_batch_unload(env, nif_data);
         return -1;
     }
     if (h2o_nif_slice_load(env, nif_data) != 0) {
         (void)h2o_nif_port_unload(env, nif_data);
+        (void)h2o_nif_batch_unload(env, nif_data);
         return -1;
     }
     h2o_srand();
@@ -85,6 +114,8 @@ h2o_nif_globals_load(ErlNifEnv *env, h2o_nif_data_t *nif_data)
     {                                                                                                                              \
         Id = enif_make_atom(env, Value);                                                                                           \
     }
+    ATOM(ATOM_$gen_call, "$gen_call");
+    ATOM(ATOM_$gen_cast, "$gen_cast");
     ATOM(ATOM_accept, "accept");
     ATOM(ATOM_active, "active");
     ATOM(ATOM_already_started, "already_started");
@@ -94,9 +125,15 @@ h2o_nif_globals_load(ErlNifEnv *env, h2o_nif_data_t *nif_data)
     ATOM(ATOM_closed, "closed");
     ATOM(ATOM_configured, "configured");
     ATOM(ATOM_connected, "connected");
+    ATOM(ATOM_continue, "continue");
     ATOM(ATOM_eagain, "eagain");
+    ATOM(ATOM_entity, "entity");
     ATOM(ATOM_error, "error");
     ATOM(ATOM_false, "false");
+    ATOM(ATOM_filter, "filter");
+    ATOM(ATOM_fin, "fin");
+    ATOM(ATOM_final_input, "final_input");
+    ATOM(ATOM_finalize, "finalize");
     ATOM(ATOM_finalized, "finalized");
     ATOM(ATOM_gc_avg, "gc_avg");
     ATOM(ATOM_gc_max, "gc_max");
@@ -105,14 +142,25 @@ h2o_nif_globals_load(ErlNifEnv *env, h2o_nif_data_t *nif_data)
     ATOM(ATOM_h2o_port, "h2o_port");
     ATOM(ATOM_h2o_port_closed, "h2o_port_closed");
     ATOM(ATOM_h2o_port_data, "h2o_port_data");
+    ATOM(ATOM_h2o_req, "h2o_req");
+    ATOM(ATOM_h2o_res, "h2o_res");
+    ATOM(ATOM_handler_event_read_body, "handler_event_read_body");
+    ATOM(ATOM_handler_event_reply, "handler_event_reply");
+    ATOM(ATOM_handler_event_stream_body, "handler_event_stream_body");
+    ATOM(ATOM_handler_event_stream_reply, "handler_event_stream_reply");
     ATOM(ATOM_hm_stat, "hm_stat");
+    ATOM(ATOM_HTTP_1_0, "HTTP/1.0");
+    ATOM(ATOM_HTTP_1_1, "HTTP/1.1");
+    ATOM(ATOM_HTTP_2, "HTTP/2");
     ATOM(ATOM_in_progress, "in_progress");
     ATOM(ATOM_listening, "listening");
     ATOM(ATOM_max, "max");
     ATOM(ATOM_mem_info, "mem_info");
     ATOM(ATOM_min, "min");
+    ATOM(ATOM_more, "more");
     ATOM(ATOM_n_buckets, "n_buckets");
     ATOM(ATOM_nil, "nil");
+    ATOM(ATOM_nofin, "nofin");
     ATOM(ATOM_num_accept, "num_accept");
     ATOM(ATOM_num_children, "num_children");
     ATOM(ATOM_num_listen, "num_listen");
@@ -122,8 +170,12 @@ h2o_nif_globals_load(ErlNifEnv *env, h2o_nif_data_t *nif_data)
     ATOM(ATOM_once, "once");
     ATOM(ATOM_open, "open");
     ATOM(ATOM_parent, "parent");
+    ATOM(ATOM_port_connect, "port_connect");
     ATOM(ATOM_ports_stat, "ports_stat");
     ATOM(ATOM_ready_input, "ready_input");
+    ATOM(ATOM_reply, "reply");
+    ATOM(ATOM_requested, "requested");
+    ATOM(ATOM_send_data, "send_data");
     ATOM(ATOM_seq, "seq");
     ATOM(ATOM_seq_ports, "seq_ports");
     ATOM(ATOM_size, "size");
@@ -141,6 +193,9 @@ h2o_nif_globals_load(ErlNifEnv *env, h2o_nif_data_t *nif_data)
 int
 h2o_nif_globals_upgrade(ErlNifEnv *env, void **priv_data, void **old_priv_data, ERL_NIF_TERM load_info)
 {
+    if (h2o_nif_batch_upgrade(env, priv_data, old_priv_data, load_info) != 0) {
+        return -1;
+    }
     if (h2o_nif_port_upgrade(env, priv_data, old_priv_data, load_info) != 0) {
         return -1;
     }
@@ -157,5 +212,6 @@ h2o_nif_globals_unload(ErlNifEnv *env, h2o_nif_data_t *nif_data)
     h2o_hostinfo_max_threads = 1;
     (void)h2o_nif_slice_unload(env, nif_data);
     (void)h2o_nif_port_unload(env, nif_data);
+    (void)h2o_nif_batch_unload(env, nif_data);
     return;
 }

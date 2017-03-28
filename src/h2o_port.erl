@@ -11,12 +11,14 @@
 -module(h2o_port).
 
 -include("h2o_port.hrl").
+-include("h2o_batch.hrl").
 
 %% Public API
 -export([open/0]).
 -export([open/1]).
 -export([close/1]).
 -export([controlling_process/2]).
+-export([controlling_process/3]).
 -export([accept/1]).
 -export([accept/2]).
 
@@ -51,6 +53,12 @@ close(Port) ->
 	end.
 
 controlling_process(Port, NewOwner) when is_pid(NewOwner) ->
+	% ok = h2o_batch:cast(?MODULE, {port_connect, Port, NewOwner}),
+	ok = h2o_batch:cast({?H2O_BATCH_port_connect, {Port, NewOwner}}),
+	_ = sync_input(Port, NewOwner, false),
+	ok.
+
+controlling_process(Port, NewOwner, [sync]) ->
 	case h2o_nif:port_info(Port, connected) of
 		{connected, NewOwner} ->
 			ok;
@@ -59,35 +67,61 @@ controlling_process(Port, NewOwner) when is_pid(NewOwner) ->
 		undefined ->
 			{error, einval};
 		_ ->
-			case h2o_nif:port_getopt(Port, active) of
-				{ok, A0} ->
-					SetOptRes =
-						case A0 of
-							false -> ok;
-							_ -> h2o_nif:port_setopt(Port, active, false)
-						end,
-					case {sync_input(Port, NewOwner, false), SetOptRes} of
-						{true, _} -> %% port already closed
-							ok;
-						{false, ok} ->
-							try h2o_nif:port_connect(Port, NewOwner) of
-								true ->
-									true = h2o_kernel:port_connect(Port, NewOwner),
-									case A0 of
-										false -> ok;
-										_ -> h2o_nif:port_setopt(Port, active, A0)
-									end
-							catch
-								error:Reason ->
-									{error, Reason}
-							end;
-						{false, Error} ->
-							Error
-					end;
-				Error ->
-					Error
+			case sync_input(Port, NewOwner, false) of
+				true -> %% port already closed
+					ok;
+				false ->
+					try h2o_nif:port_connect(Port, NewOwner) of
+						true ->
+							_ = sync_input(Port, NewOwner, false),
+							ok
+					catch
+						error:Reason ->
+							{error, Reason}
+					end
 			end
-	end.
+	end;
+controlling_process(Port, NewOwner, _) ->
+	controlling_process(Port, NewOwner).
+
+% controlling_process(Port, NewOwner) when is_pid(NewOwner) ->
+% 	case h2o_nif:port_info(Port, connected) of
+% 		{connected, NewOwner} ->
+% 			ok;
+% 		{connected, Pid} when Pid =/= self() ->
+% 			{error, not_owner};
+% 		undefined ->
+% 			{error, einval};
+% 		_ ->
+% 			case h2o_nif:port_getopt(Port, active) of
+% 				{ok, A0} ->
+% 					SetOptRes =
+% 						case A0 of
+% 							false -> ok;
+% 							_ -> h2o_nif:port_setopt(Port, active, false)
+% 						end,
+% 					case {sync_input(Port, NewOwner, false), SetOptRes} of
+% 						{true, _} -> %% port already closed
+% 							ok;
+% 						{false, ok} ->
+% 							try h2o_nif:port_connect(Port, NewOwner) of
+% 								true ->
+% 									true = h2o_kernel:port_connect(Port, NewOwner),
+% 									case A0 of
+% 										false -> ok;
+% 										_ -> h2o_nif:port_setopt(Port, active, A0)
+% 									end
+% 							catch
+% 								error:Reason ->
+% 									{error, Reason}
+% 							end;
+% 						{false, Error} ->
+% 							Error
+% 					end;
+% 				Error ->
+% 					Error
+% 			end
+% 	end.
 
 accept(LPort) ->
 	case h2o_nif:port_accept(LPort) of

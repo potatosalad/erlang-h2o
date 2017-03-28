@@ -12,19 +12,12 @@
 
 typedef struct h2o_nif_filter_s h2o_nif_filter_t;
 typedef struct h2o_nif_filter_ctx_s h2o_nif_filter_ctx_t;
-typedef struct h2o_nif_filter_event_s h2o_nif_filter_event_t;
 typedef struct h2o_nif_filter_handle_s h2o_nif_filter_handle_t;
+typedef struct h2o_nif_filter_data_s h2o_nif_filter_data_t;
 
 struct h2o_nif_filter_ctx_s {
     h2o_filter_t super;
     _Atomic uintptr_t filter;
-};
-
-struct h2o_nif_filter_event_s {
-    h2o_nif_port_t super;
-    h2o_linklist_t _link;
-    h2o_req_t *req;
-    h2o_ostream_t **slot;
 };
 
 struct h2o_nif_filter_handle_s {
@@ -40,10 +33,13 @@ struct h2o_nif_filter_s {
     _Atomic unsigned long num_events;
 };
 
+struct h2o_nif_filter_data_s {
+    ErlNifEnv *env;
+};
+
 /* Resource Functions */
 
 static int h2o_nif_filter_get(ErlNifEnv *env, ERL_NIF_TERM port_term, h2o_nif_filter_t **filterp);
-static int h2o_nif_filter_event_get(ErlNifEnv *env, ERL_NIF_TERM port_term, h2o_nif_filter_event_t **eventp);
 
 inline int
 h2o_nif_filter_get(ErlNifEnv *env, ERL_NIF_TERM port_term, h2o_nif_filter_t **filterp)
@@ -55,19 +51,6 @@ h2o_nif_filter_get(ErlNifEnv *env, ERL_NIF_TERM port_term, h2o_nif_filter_t **fi
         return 0;
     }
     *filterp = (h2o_nif_filter_t *)port;
-    return 1;
-}
-
-inline int
-h2o_nif_filter_event_get(ErlNifEnv *env, ERL_NIF_TERM port_term, h2o_nif_filter_event_t **eventp)
-{
-    assert(eventp != NULL);
-    h2o_nif_port_t *port = NULL;
-    if (!h2o_nif_port_get(env, port_term, &port) || port->type != H2O_NIF_PORT_TYPE_FILTER_EVENT) {
-        *eventp = NULL;
-        return 0;
-    }
-    *eventp = (h2o_nif_filter_event_t *)port;
     return 1;
 }
 

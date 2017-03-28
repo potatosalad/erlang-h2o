@@ -35,66 +35,43 @@
 
 static int cloexec_pipe(int fds[2]);
 static void on_read(h2o_socket_t *sock, const char *err);
-static void queue_cb(h2o_nif_ipc_queue_t *queue);
+static void queue_cb(h2o_nif_ipc_queue_t *queue, int dtor);
 static int set_cloexec(int fd);
 
 h2o_nif_ipc_queue_t *
 h2o_nif_ipc_create_queue(h2o_loop_t *loop)
 {
-    /* Allocate */
     h2o_nif_ipc_queue_t *queue = enif_alloc(sizeof(*queue));
     if (queue == NULL) {
         return NULL;
     }
     (void)memset(queue, 0, sizeof(*queue));
-    ck_fifo_mpmc_entry_t *stub = malloc(sizeof(*stub));
-    if (stub == NULL) {
-        (void)enif_free(queue);
-        return NULL;
-    }
-    (void)memset(stub, 0, sizeof(*stub));
-
-    /* Initialize */
     int fds[2];
     if (cloexec_pipe(fds) != 0) {
         perror("pipe");
         abort();
     }
     fcntl(fds[1], F_SETFL, O_NONBLOCK);
-    queue->flag = (atomic_flag)ATOMIC_FLAG_INIT;
-    queue->write = fds[1];
-    queue->read = h2o_evloop_socket_create(loop, fds[0], 0);
-    queue->read->data = queue;
-    (void)h2o_socket_read_start(queue->read, on_read);
-    (void)ck_fifo_mpmc_init(&queue->fifo, stub);
-
+    queue->async.flag = (atomic_flag)ATOMIC_FLAG_INIT;
+    queue->async.write = fds[1];
+    queue->async.read = h2o_evloop_socket_create(loop, fds[0], 0);
+    queue->async.read->data = queue;
+    (void)ck_spinlock_init(&queue->fifo.spinlock);
+    (void)h2o_linklist_init_anchor(&queue->fifo.messages);
+    (void)h2o_socket_read_start(queue->async.read, on_read);
     return queue;
 }
 
 void
 h2o_nif_ipc_destroy_queue(h2o_nif_ipc_queue_t *queue)
 {
-    (void)atomic_flag_test_and_set(&queue->flag);
-    (void)h2o_socket_read_stop(queue->read);
-    (void)h2o_socket_close(queue->read);
-    (void)close(queue->write);
-    ck_fifo_mpmc_entry_t *garbage = NULL;
-    // ck_fifo_spsc_entry_t *garbage = NULL;
-    h2o_nif_ipc_message_t *message = NULL;
-    int retval;
-    do {
-        retval = ck_fifo_mpmc_dequeue(&queue->fifo, (void *)&message, &garbage);
-        // retval = ck_fifo_spsc_dequeue(&queue->fifo, (void *)&message);
-        if (retval) {
-            (void)message->callback(message->data);
-            (void)enif_free(message);
-            (void)free(garbage);
-        }
-    } while (retval != 0);
-    (void)ck_fifo_mpmc_deinit(&queue->fifo, &garbage);
-    // (void)ck_fifo_spsc_deinit(&queue->fifo, &garbage);
-    (void)free(garbage);
+    (void)atomic_flag_test_and_set(&queue->async.flag);
+    (void)h2o_socket_read_stop(queue->async.read);
+    (void)h2o_socket_close(queue->async.read);
+    (void)close(queue->async.write);
+    (void)queue_cb(queue, 1);
     (void)enif_free(queue);
+    return;
 }
 
 static int
@@ -121,35 +98,50 @@ Exit:
 static void
 on_read(h2o_socket_t *sock, const char *err)
 {
+    // TRACE_F("on_read:%s:%d\n", __FILE__, __LINE__);
     if (err != NULL) {
         fprintf(stderr, "pipe error\n");
         abort();
     }
-
     (void)h2o_buffer_consume(&sock->input, sock->input->size);
-    queue_cb(sock->data);
+    (void)queue_cb(sock->data, 0);
+}
+
+static inline int
+queue_is_empty(h2o_nif_ipc_queue_t *queue)
+{
+    int retval;
+    (void)ck_spinlock_lock_eb(&queue->fifo.spinlock);
+    retval = h2o_linklist_is_empty(&queue->fifo.messages);
+    (void)ck_spinlock_unlock(&queue->fifo.spinlock);
+    return retval;
 }
 
 static void
-queue_cb(h2o_nif_ipc_queue_t *queue)
+queue_cb(h2o_nif_ipc_queue_t *queue, int dtor)
 {
-    ck_fifo_mpmc_entry_t *garbage = NULL;
+    // TRACE_F("queue_cb:%s:%d\n", __FILE__, __LINE__);
+    h2o_linklist_t messages;
+    h2o_linklist_t *anchor = &messages;
+    h2o_linklist_t *node = NULL;
     h2o_nif_ipc_message_t *message = NULL;
-    int retval;
-    int counter = 1;
     do {
-        (void)atomic_flag_clear_explicit(&queue->flag, memory_order_relaxed);
-        retval = ck_fifo_mpmc_trydequeue(&queue->fifo, (void *)&message, &garbage);
-        if (retval) {
-            (void)message->callback(message->data);
-            (void)enif_free(message);
-        } else {
-            (void)ck_pr_stall();
-            if ((--counter) != 0) {
-                retval = 1;
-            }
+        if (!dtor) {
+            (void)atomic_flag_clear_explicit(&queue->async.flag, memory_order_relaxed);
         }
-    } while (retval != 0);
+        (void)h2o_linklist_init_anchor(&messages);
+        (void)ck_spinlock_lock_eb(&queue->fifo.spinlock);
+        (void)h2o_linklist_insert_list(&messages, &queue->fifo.messages);
+        (void)ck_spinlock_unlock(&queue->fifo.spinlock);
+        node = anchor->next;
+        while (node != anchor) {
+            message = H2O_STRUCT_FROM_MEMBER(h2o_nif_ipc_message_t, _link, node);
+            node = node->next;
+            (void)message->cb(message);
+            (void)h2o_nif_ipc_destroy_message(message);
+        }
+        (void)ck_pr_stall();
+    } while (!queue_is_empty(queue));
     return;
 }
 

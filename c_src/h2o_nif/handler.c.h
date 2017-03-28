@@ -75,7 +75,7 @@ h2o_nif_handler_read_1(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
         unsigned long count = 0;
         while (node != anchor) {
             event = H2O_STRUCT_FROM_MEMBER(h2o_nif_handler_event_t, _link, node);
-            list = enif_make_list_cell(env, h2o_nif_port_make(env, &event->super), list);
+            list = enif_make_list_cell(env, h2o_nif_handler_event_make(env, event), list);
             node = node->prev;
             count++;
         }
@@ -154,7 +154,7 @@ h2o_nif_handler_read_trap_3(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
         slice = end - i;
         while (node != anchor && (count < slice)) {
             event = H2O_STRUCT_FROM_MEMBER(h2o_nif_handler_event_t, _link, node);
-            list = enif_make_list_cell(env, h2o_nif_port_make(env, &event->super), list);
+            list = enif_make_list_cell(env, h2o_nif_handler_event_make(env, event), list);
             node = node->prev;
             count++;
         }
@@ -212,12 +212,13 @@ h2o_nif_handler_read_trap_3(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 
 /* fun h2o_nif:handler_event_reply/4 */
 
-static ERL_NIF_TERM h2o_nif_handler_event_reply_trap_4(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]);
+// static ERL_NIF_TERM h2o_nif_handler_event_reply_trap_4(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]);
 
 static void
-__h2o_nif_handler_event_reply_4(h2o_nif_handler_event_t *event)
+__h2o_nif_handler_event_reply_4(h2o_nif_ipc_handler_event_t *message)
 {
     TRACE_F("__h2o_nif_handler_event_reply_4:%s:%d\n", __FILE__, __LINE__);
+    h2o_nif_handler_event_t *event = message->event;
     ErlNifEnv *env = event->finalizer.env;
     unsigned int status = event->finalizer.status;
     ERL_NIF_TERM headers = event->finalizer.headers;
@@ -247,77 +248,77 @@ __h2o_nif_handler_event_reply_4(h2o_nif_handler_event_t *event)
     // (void)h2o_nif_port_release(&event->super);
 }
 
-static ERL_NIF_TERM
-h2o_nif_handler_event_reply_4(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
-{
-    TRACE_F("h2o_nif_handler_event_reply_4:%s:%d\n", __FILE__, __LINE__);
-    h2o_nif_handler_event_t *event = NULL;
-    if (argc != 4 || !h2o_nif_handler_event_get(env, argv[0], &event)) {
-        return enif_make_badarg(env);
-    }
-    unsigned int status;
-    ERL_NIF_TERM headers = argv[2];
-    ErlNifBinary body;
-    if (!enif_get_uint(env, argv[1], &status) || status < 100 || status > 599 || !enif_is_map(env, headers) ||
-        !enif_inspect_iolist_as_binary(env, argv[3], &body)) {
-        return enif_make_badarg(env);
-    }
-    if (!h2o_nif_port_set_finalized(&event->super)) {
-        return enif_make_tuple2(env, ATOM_error, ATOM_closed);
-    }
-    (void)atomic_fetch_add_explicit(&event->num_async, 1, memory_order_relaxed);
-    // (void)h2o_nif_port_keep(&event->super);
-    event->finalizer.env = env;
-    event->finalizer.status = status;
-    event->finalizer.headers = headers;
-    event->finalizer.body = body;
-    (void)h2o_nif_ipc_request(event->req, (h2o_nif_ipc_callback_t *)__h2o_nif_handler_event_reply_4, (void *)event);
-    (void)ck_pr_stall();
-    if (atomic_load_explicit(&event->num_async, memory_order_relaxed) == 0) {
-        return ATOM_ok;
-        // ERL_NIF_TERM newargv[1];
-        // newargv[0] = argv[0];
-        // return h2o_nif_port_close_1(env, 1, newargv);
-    }
-    return enif_schedule_nif(env, "handler_event_reply", 0, h2o_nif_handler_event_reply_trap_4, argc, argv);
-}
+// static ERL_NIF_TERM
+// h2o_nif_handler_event_reply_4(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+// {
+//     TRACE_F("h2o_nif_handler_event_reply_4:%s:%d\n", __FILE__, __LINE__);
+//     h2o_nif_handler_event_t *event = NULL;
+//     if (argc != 4 || !h2o_nif_handler_event_get(env, argv[0], &event)) {
+//         return enif_make_badarg(env);
+//     }
+//     unsigned int status;
+//     ERL_NIF_TERM headers = argv[2];
+//     ErlNifBinary body;
+//     if (!enif_get_uint(env, argv[1], &status) || status < 100 || status > 599 || !enif_is_map(env, headers) ||
+//         !enif_inspect_iolist_as_binary(env, argv[3], &body)) {
+//         return enif_make_badarg(env);
+//     }
+//     if (!h2o_nif_port_set_finalized(&event->super)) {
+//         return enif_make_tuple2(env, ATOM_error, ATOM_closed);
+//     }
+//     (void)atomic_fetch_add_explicit(&event->num_async, 1, memory_order_relaxed);
+//     // (void)h2o_nif_port_keep(&event->super);
+//     event->finalizer.env = env;
+//     event->finalizer.status = status;
+//     event->finalizer.headers = headers;
+//     event->finalizer.body = body;
+//     (void)h2o_nif_ipc_request(event->req, (h2o_nif_ipc_callback_t *)__h2o_nif_handler_event_reply_4, (void *)event);
+//     (void)ck_pr_stall();
+//     if (atomic_load_explicit(&event->num_async, memory_order_relaxed) == 0) {
+//         return ATOM_ok;
+//         // ERL_NIF_TERM newargv[1];
+//         // newargv[0] = argv[0];
+//         // return h2o_nif_port_close_1(env, 1, newargv);
+//     }
+//     return enif_schedule_nif(env, "handler_event_reply", 0, h2o_nif_handler_event_reply_trap_4, argc, argv);
+// }
 
-static ERL_NIF_TERM
-h2o_nif_handler_event_reply_trap_4(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
-{
-    TRACE_F("h2o_nif_handler_event_reply_trap_4:%s:%d\n", __FILE__, __LINE__);
-    h2o_nif_handler_event_t *event = NULL;
-    if (argc != 4 || !h2o_nif_handler_event_get(env, argv[0], &event)) {
-        return enif_make_badarg(env);
-    }
-    if (atomic_load_explicit(&event->num_async, memory_order_relaxed) == 0) {
-        return ATOM_ok;
-        // ERL_NIF_TERM newargv[1];
-        // newargv[0] = argv[0];
-        // return h2o_nif_port_close_1(env, 1, newargv);
-    }
-    return enif_schedule_nif(env, "handler_event_reply", 0, h2o_nif_handler_event_reply_trap_4, argc, argv);
-}
+// static ERL_NIF_TERM
+// h2o_nif_handler_event_reply_trap_4(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+// {
+//     TRACE_F("h2o_nif_handler_event_reply_trap_4:%s:%d\n", __FILE__, __LINE__);
+//     h2o_nif_handler_event_t *event = NULL;
+//     if (argc != 4 || !h2o_nif_handler_event_get(env, argv[0], &event)) {
+//         return enif_make_badarg(env);
+//     }
+//     if (atomic_load_explicit(&event->num_async, memory_order_relaxed) == 0) {
+//         return ATOM_ok;
+//         // ERL_NIF_TERM newargv[1];
+//         // newargv[0] = argv[0];
+//         // return h2o_nif_port_close_1(env, 1, newargv);
+//     }
+//     return enif_schedule_nif(env, "handler_event_reply", 0, h2o_nif_handler_event_reply_trap_4, argc, argv);
+// }
 
-/* fun h2o_nif:handler_event_reply_batch/1 */
+/* fun h2o_nif:handler_event_batch/1 */
 
-typedef struct h2o_nif_handler_event_reply_batch_1_s h2o_nif_handler_event_reply_batch_1_t;
+typedef struct h2o_nif_handler_event_batch_1_s h2o_nif_handler_event_batch_1_t;
 
-struct h2o_nif_handler_event_reply_batch_1_s {
+struct h2o_nif_handler_event_batch_1_s {
     ErlNifEnv *env;
     ERL_NIF_TERM list;
 };
 
-static ERL_NIF_TERM h2o_nif_handler_event_reply_batch_trap_1(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]);
+static ERL_NIF_TERM h2o_nif_handler_event_batch_trap_1(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]);
 
 static ERL_NIF_TERM
-h2o_nif_handler_event_reply_batch_1(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+h2o_nif_handler_event_batch_1(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
-    TRACE_F("h2o_nif_handler_event_reply_batch_1:%s:%d\n", __FILE__, __LINE__);
+    TRACE_F("h2o_nif_handler_event_batch_1:%s:%d\n", __FILE__, __LINE__);
     if (argc != 1 || !enif_is_list(env, argv[0])) {
         return enif_make_badarg(env);
     }
-    h2o_nif_handler_event_reply_batch_1_t *trap = enif_alloc_resource(h2o_nif_trap_resource_type, sizeof(*trap));
+    h2o_nif_handler_event_batch_1_t *trap = enif_alloc_resource(h2o_nif_trap_resource_type, sizeof(*trap));
     if (trap == NULL) {
         return enif_make_badarg(env);
     }
@@ -327,7 +328,6 @@ h2o_nif_handler_event_reply_batch_1(ErlNifEnv *env, int argc, const ERL_NIF_TERM
         return enif_make_badarg(env);
     }
     trap->list = enif_make_list(trap->env, 0);
-    // trap->list = enif_make_copy(trap->env, argv[0]);
     h2o_nif_handler_event_t *event = NULL;
     unsigned int status;
     ERL_NIF_TERM headers;
@@ -339,28 +339,27 @@ h2o_nif_handler_event_reply_batch_1(ErlNifEnv *env, int argc, const ERL_NIF_TERM
     const ERL_NIF_TERM *array;
     while (enif_get_list_cell(env, list, &head, &tail)) {
         list = tail;
-        if (!enif_get_tuple(env, head, &arity, &array) || arity != 4) {
+        if (!enif_get_tuple(env, head, &arity, &array) || arity != 5 || array[0] != ATOM_reply) {
             continue;
         }
-        if (!h2o_nif_handler_event_get(env, array[0], &event)) {
+        if (!h2o_nif_handler_event_get(env, array[1], &event)) {
             continue;
         }
-        headers = array[2];
-        if (!enif_get_uint(env, array[1], &status) || status < 100 || status > 599 || !enif_is_map(env, headers) ||
-            !enif_inspect_iolist_as_binary(env, array[3], &body)) {
+        headers = array[3];
+        if (!enif_get_uint(env, array[2], &status) || status < 100 || status > 599 || !enif_is_map(env, headers) ||
+            !enif_inspect_iolist_as_binary(env, array[4], &body)) {
             continue;
         }
         if (!h2o_nif_port_set_finalized(&event->super)) {
             continue;
         }
-        assert(enif_inspect_iolist_as_binary(trap->env, enif_make_copy(trap->env, array[3]), &body));
+        assert(enif_inspect_iolist_as_binary(trap->env, enif_make_copy(trap->env, array[4]), &body));
         (void)atomic_fetch_add_explicit(&event->num_async, 1, memory_order_relaxed);
         event->finalizer.env = trap->env;
         event->finalizer.status = status;
         event->finalizer.headers = enif_make_copy(trap->env, headers);
         event->finalizer.body = body;
-        trap->list = enif_make_list_cell(trap->env, enif_make_copy(trap->env, array[0]), trap->list);
-        // (void)h2o_nif_ipc_request(event->req, (h2o_nif_ipc_callback_t *)__h2o_nif_handler_event_reply_4, (void *)event);
+        trap->list = enif_make_list_cell(trap->env, enif_make_copy(trap->env, array[1]), trap->list);
     }
     list = trap->list;
     while (enif_get_list_cell(trap->env, list, &head, &tail)) {
@@ -368,7 +367,7 @@ h2o_nif_handler_event_reply_batch_1(ErlNifEnv *env, int argc, const ERL_NIF_TERM
         if (!h2o_nif_handler_event_get(trap->env, head, &event)) {
             continue;
         }
-        (void)h2o_nif_ipc_request(event->req, (h2o_nif_ipc_callback_t *)__h2o_nif_handler_event_reply_4, (void *)event);
+        (void)h2o_nif_ipc_enqueue_handler_event(event, (h2o_nif_ipc_callback_t *)__h2o_nif_handler_event_reply_4);
     }
     (void)ck_pr_stall();
     int done = 1;
@@ -394,14 +393,14 @@ h2o_nif_handler_event_reply_batch_1(ErlNifEnv *env, int argc, const ERL_NIF_TERM
     newargv[0] = enif_make_resource(env, (void *)trap); /* [0] trap */
     (void)enif_release_resource((void *)trap);
 
-    return enif_schedule_nif(env, "handler_event_reply_batch", 0, h2o_nif_handler_event_reply_batch_trap_1, 1, newargv);
+    return enif_schedule_nif(env, "handler_event_batch", 0, h2o_nif_handler_event_batch_trap_1, 1, newargv);
 }
 
 static ERL_NIF_TERM
-h2o_nif_handler_event_reply_batch_trap_1(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+h2o_nif_handler_event_batch_trap_1(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
-    TRACE_F("h2o_nif_handler_event_reply_batch_trap_1:%s:%d\n", __FILE__, __LINE__);
-    h2o_nif_handler_event_reply_batch_1_t *trap = NULL;
+    TRACE_F("h2o_nif_handler_event_batch_trap_1:%s:%d\n", __FILE__, __LINE__);
+    h2o_nif_handler_event_batch_1_t *trap = NULL;
     if (argc != 1 || !enif_get_resource(env, argv[0], h2o_nif_trap_resource_type, (void **)&trap)) {
         return enif_make_badarg(env);
     }
@@ -425,91 +424,220 @@ h2o_nif_handler_event_reply_batch_trap_1(ErlNifEnv *env, int argc, const ERL_NIF
         (void)enif_free_env(trap->env);
         return ATOM_ok;
     }
-    return enif_schedule_nif(env, "handler_event_reply_batch", 0, h2o_nif_handler_event_reply_batch_trap_1, argc, argv);
+    return enif_schedule_nif(env, "handler_event_batch", 0, h2o_nif_handler_event_batch_trap_1, argc, argv);
 }
 
-/* fun h2o_nif:handler_event_reply_multi/4 */
+// /* fun h2o_nif:handler_event_reply_batch/1 */
 
-static ERL_NIF_TERM h2o_nif_handler_event_reply_multi_trap_4(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]);
+// typedef struct h2o_nif_handler_event_reply_batch_1_s h2o_nif_handler_event_reply_batch_1_t;
 
-static ERL_NIF_TERM
-h2o_nif_handler_event_reply_multi_4(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
-{
-    TRACE_F("h2o_nif_handler_event_reply_multi_4:%s:%d\n", __FILE__, __LINE__);
-    if (argc != 4 || !enif_is_list(env, argv[0])) {
-        return enif_make_badarg(env);
-    }
-    unsigned int status;
-    ERL_NIF_TERM headers = argv[2];
-    ErlNifBinary body;
-    if (!enif_get_uint(env, argv[1], &status) || status < 100 || status > 599 || !enif_is_map(env, headers) ||
-        !enif_inspect_iolist_as_binary(env, argv[3], &body)) {
-        return enif_make_badarg(env);
-    }
-    ERL_NIF_TERM list = argv[0];
-    ERL_NIF_TERM head;
-    ERL_NIF_TERM tail;
-    h2o_nif_handler_event_t *event = NULL;
-    while (enif_get_list_cell(env, list, &head, &tail)) {
-        list = tail;
-        if (!h2o_nif_handler_event_get(env, head, &event)) {
-            continue;
-        }
-        if (!h2o_nif_port_set_finalized(&event->super)) {
-            continue;
-        }
-        (void)atomic_fetch_add_explicit(&event->num_async, 1, memory_order_relaxed);
-        event->finalizer.env = env;
-        event->finalizer.status = status;
-        event->finalizer.headers = headers;
-        event->finalizer.body = body;
-        (void)h2o_nif_ipc_request(event->req, (h2o_nif_ipc_callback_t *)__h2o_nif_handler_event_reply_4, (void *)event);
-    }
-    (void)ck_pr_stall();
-    int done = 1;
-    list = argv[0];
-    while (enif_get_list_cell(env, list, &head, &tail)) {
-        list = tail;
-        if (!h2o_nif_handler_event_get(env, head, &event)) {
-            continue;
-        }
-        if (atomic_load_explicit(&event->num_async, memory_order_relaxed) == 0) {
-            continue;
-        }
-        done = 0;
-        break;
-    }
-    if (done) {
-        return ATOM_ok;
-    }
-    return enif_schedule_nif(env, "handler_event_reply_multi", 0, h2o_nif_handler_event_reply_multi_trap_4, argc, argv);
-}
+// struct h2o_nif_handler_event_reply_batch_1_s {
+//     ErlNifEnv *env;
+//     ERL_NIF_TERM list;
+// };
 
-static ERL_NIF_TERM
-h2o_nif_handler_event_reply_multi_trap_4(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
-{
-    TRACE_F("h2o_nif_handler_event_reply_multi_trap_4:%s:%d\n", __FILE__, __LINE__);
-    if (argc != 4 || !enif_is_list(env, argv[0])) {
-        return enif_make_badarg(env);
-    }
-    ERL_NIF_TERM list = argv[0];
-    ERL_NIF_TERM head;
-    ERL_NIF_TERM tail;
-    h2o_nif_handler_event_t *event = NULL;
-    int done = 1;
-    while (enif_get_list_cell(env, list, &head, &tail)) {
-        list = tail;
-        if (!h2o_nif_handler_event_get(env, head, &event)) {
-            continue;
-        }
-        if (atomic_load_explicit(&event->num_async, memory_order_relaxed) == 0) {
-            continue;
-        }
-        done = 0;
-        break;
-    }
-    if (done) {
-        return ATOM_ok;
-    }
-    return enif_schedule_nif(env, "handler_event_reply_multi", 0, h2o_nif_handler_event_reply_multi_trap_4, argc, argv);
-}
+// static ERL_NIF_TERM h2o_nif_handler_event_reply_batch_trap_1(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]);
+
+// static ERL_NIF_TERM
+// h2o_nif_handler_event_reply_batch_1(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+// {
+//     TRACE_F("h2o_nif_handler_event_reply_batch_1:%s:%d\n", __FILE__, __LINE__);
+//     if (argc != 1 || !enif_is_list(env, argv[0])) {
+//         return enif_make_badarg(env);
+//     }
+//     h2o_nif_handler_event_reply_batch_1_t *trap = enif_alloc_resource(h2o_nif_trap_resource_type, sizeof(*trap));
+//     if (trap == NULL) {
+//         return enif_make_badarg(env);
+//     }
+//     trap->env = enif_alloc_env();
+//     if (trap->env == NULL) {
+//         (void)enif_release_resource((void *)trap);
+//         return enif_make_badarg(env);
+//     }
+//     trap->list = enif_make_list(trap->env, 0);
+//     // trap->list = enif_make_copy(trap->env, argv[0]);
+//     h2o_nif_handler_event_t *event = NULL;
+//     unsigned int status;
+//     ERL_NIF_TERM headers;
+//     ErlNifBinary body;
+//     ERL_NIF_TERM list = argv[0];
+//     ERL_NIF_TERM head;
+//     ERL_NIF_TERM tail;
+//     int arity;
+//     const ERL_NIF_TERM *array;
+//     while (enif_get_list_cell(env, list, &head, &tail)) {
+//         list = tail;
+//         if (!enif_get_tuple(env, head, &arity, &array) || arity != 4) {
+//             continue;
+//         }
+//         if (!h2o_nif_handler_event_get(env, array[0], &event)) {
+//             continue;
+//         }
+//         headers = array[2];
+//         if (!enif_get_uint(env, array[1], &status) || status < 100 || status > 599 || !enif_is_map(env, headers) ||
+//             !enif_inspect_iolist_as_binary(env, array[3], &body)) {
+//             continue;
+//         }
+//         if (!h2o_nif_port_set_finalized(&event->super)) {
+//             continue;
+//         }
+//         assert(enif_inspect_iolist_as_binary(trap->env, enif_make_copy(trap->env, array[3]), &body));
+//         (void)atomic_fetch_add_explicit(&event->num_async, 1, memory_order_relaxed);
+//         event->finalizer.env = trap->env;
+//         event->finalizer.status = status;
+//         event->finalizer.headers = enif_make_copy(trap->env, headers);
+//         event->finalizer.body = body;
+//         trap->list = enif_make_list_cell(trap->env, enif_make_copy(trap->env, array[0]), trap->list);
+//         // (void)h2o_nif_ipc_request(event->req, (h2o_nif_ipc_callback_t *)__h2o_nif_handler_event_reply_4, (void *)event);
+//     }
+//     list = trap->list;
+//     while (enif_get_list_cell(trap->env, list, &head, &tail)) {
+//         list = tail;
+//         if (!h2o_nif_handler_event_get(trap->env, head, &event)) {
+//             continue;
+//         }
+//         (void)h2o_nif_ipc_request(event->req, (h2o_nif_ipc_callback_t *)__h2o_nif_handler_event_reply_4, (void *)event);
+//     }
+//     (void)ck_pr_stall();
+//     int done = 1;
+//     list = trap->list;
+//     while (enif_get_list_cell(trap->env, list, &head, &tail)) {
+//         list = tail;
+//         if (!h2o_nif_handler_event_get(trap->env, head, &event)) {
+//             continue;
+//         }
+//         if (atomic_load_explicit(&event->num_async, memory_order_relaxed) == 0) {
+//             continue;
+//         }
+//         done = 0;
+//         break;
+//     }
+//     if (done) {
+//         (void)enif_free_env(trap->env);
+//         (void)enif_release_resource((void *)trap);
+//         return ATOM_ok;
+//     }
+
+//     ERL_NIF_TERM newargv[1];
+//     newargv[0] = enif_make_resource(env, (void *)trap); /* [0] trap */
+//     (void)enif_release_resource((void *)trap);
+
+//     return enif_schedule_nif(env, "handler_event_reply_batch", 0, h2o_nif_handler_event_reply_batch_trap_1, 1, newargv);
+// }
+
+// static ERL_NIF_TERM
+// h2o_nif_handler_event_reply_batch_trap_1(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+// {
+//     TRACE_F("h2o_nif_handler_event_reply_batch_trap_1:%s:%d\n", __FILE__, __LINE__);
+//     h2o_nif_handler_event_reply_batch_1_t *trap = NULL;
+//     if (argc != 1 || !enif_get_resource(env, argv[0], h2o_nif_trap_resource_type, (void **)&trap)) {
+//         return enif_make_badarg(env);
+//     }
+//     h2o_nif_handler_event_t *event = NULL;
+//     ERL_NIF_TERM list = trap->list;
+//     ERL_NIF_TERM head;
+//     ERL_NIF_TERM tail;
+//     int done = 1;
+//     while (enif_get_list_cell(trap->env, list, &head, &tail)) {
+//         list = tail;
+//         if (!h2o_nif_handler_event_get(trap->env, head, &event)) {
+//             continue;
+//         }
+//         if (atomic_load_explicit(&event->num_async, memory_order_relaxed) == 0) {
+//             continue;
+//         }
+//         done = 0;
+//         break;
+//     }
+//     if (done) {
+//         (void)enif_free_env(trap->env);
+//         return ATOM_ok;
+//     }
+//     return enif_schedule_nif(env, "handler_event_reply_batch", 0, h2o_nif_handler_event_reply_batch_trap_1, argc, argv);
+// }
+
+// /* fun h2o_nif:handler_event_reply_multi/4 */
+
+// static ERL_NIF_TERM h2o_nif_handler_event_reply_multi_trap_4(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]);
+
+// static ERL_NIF_TERM
+// h2o_nif_handler_event_reply_multi_4(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+// {
+//     TRACE_F("h2o_nif_handler_event_reply_multi_4:%s:%d\n", __FILE__, __LINE__);
+//     if (argc != 4 || !enif_is_list(env, argv[0])) {
+//         return enif_make_badarg(env);
+//     }
+//     unsigned int status;
+//     ERL_NIF_TERM headers = argv[2];
+//     ErlNifBinary body;
+//     if (!enif_get_uint(env, argv[1], &status) || status < 100 || status > 599 || !enif_is_map(env, headers) ||
+//         !enif_inspect_iolist_as_binary(env, argv[3], &body)) {
+//         return enif_make_badarg(env);
+//     }
+//     ERL_NIF_TERM list = argv[0];
+//     ERL_NIF_TERM head;
+//     ERL_NIF_TERM tail;
+//     h2o_nif_handler_event_t *event = NULL;
+//     while (enif_get_list_cell(env, list, &head, &tail)) {
+//         list = tail;
+//         if (!h2o_nif_handler_event_get(env, head, &event)) {
+//             continue;
+//         }
+//         if (!h2o_nif_port_set_finalized(&event->super)) {
+//             continue;
+//         }
+//         (void)atomic_fetch_add_explicit(&event->num_async, 1, memory_order_relaxed);
+//         event->finalizer.env = env;
+//         event->finalizer.status = status;
+//         event->finalizer.headers = headers;
+//         event->finalizer.body = body;
+//         (void)h2o_nif_ipc_request(event->req, (h2o_nif_ipc_callback_t *)__h2o_nif_handler_event_reply_4, (void *)event);
+//     }
+//     (void)ck_pr_stall();
+//     int done = 1;
+//     list = argv[0];
+//     while (enif_get_list_cell(env, list, &head, &tail)) {
+//         list = tail;
+//         if (!h2o_nif_handler_event_get(env, head, &event)) {
+//             continue;
+//         }
+//         if (atomic_load_explicit(&event->num_async, memory_order_relaxed) == 0) {
+//             continue;
+//         }
+//         done = 0;
+//         break;
+//     }
+//     if (done) {
+//         return ATOM_ok;
+//     }
+//     return enif_schedule_nif(env, "handler_event_reply_multi", 0, h2o_nif_handler_event_reply_multi_trap_4, argc, argv);
+// }
+
+// static ERL_NIF_TERM
+// h2o_nif_handler_event_reply_multi_trap_4(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+// {
+//     TRACE_F("h2o_nif_handler_event_reply_multi_trap_4:%s:%d\n", __FILE__, __LINE__);
+//     if (argc != 4 || !enif_is_list(env, argv[0])) {
+//         return enif_make_badarg(env);
+//     }
+//     ERL_NIF_TERM list = argv[0];
+//     ERL_NIF_TERM head;
+//     ERL_NIF_TERM tail;
+//     h2o_nif_handler_event_t *event = NULL;
+//     int done = 1;
+//     while (enif_get_list_cell(env, list, &head, &tail)) {
+//         list = tail;
+//         if (!h2o_nif_handler_event_get(env, head, &event)) {
+//             continue;
+//         }
+//         if (atomic_load_explicit(&event->num_async, memory_order_relaxed) == 0) {
+//             continue;
+//         }
+//         done = 0;
+//         break;
+//     }
+//     if (done) {
+//         return ATOM_ok;
+//     }
+//     return enif_schedule_nif(env, "handler_event_reply_multi", 0, h2o_nif_handler_event_reply_multi_trap_4, argc, argv);
+// }

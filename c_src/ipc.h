@@ -9,50 +9,93 @@
 
 typedef struct h2o_nif_ipc_queue_s h2o_nif_ipc_queue_t;
 typedef struct h2o_nif_ipc_message_s h2o_nif_ipc_message_t;
-typedef void h2o_nif_ipc_callback_t(void *data);
+typedef void h2o_nif_ipc_callback_t(h2o_nif_ipc_message_t *message);
 
 struct h2o_nif_ipc_queue_s {
-    atomic_flag flag;
-    int write;
-    h2o_socket_t *read;
-    ck_fifo_mpmc_t fifo;
+    struct {
+        atomic_flag flag;
+        int write;
+        h2o_socket_t *read;
+    } async;
+    struct {
+        ck_spinlock_t spinlock;
+        h2o_linklist_t messages;
+    } fifo;
 };
 
 struct h2o_nif_ipc_message_s {
-    h2o_nif_ipc_callback_t *callback;
-    void *data;
+    h2o_linklist_t _link;
+    h2o_nif_ipc_callback_t *cb;
+    h2o_nif_ipc_callback_t *dtor;
 };
 
 extern h2o_nif_ipc_queue_t *h2o_nif_ipc_create_queue(h2o_loop_t *loop);
 extern void h2o_nif_ipc_destroy_queue(h2o_nif_ipc_queue_t *queue);
-static int h2o_nif_ipc_send(h2o_nif_ipc_queue_t *queue, h2o_nif_ipc_callback_t *callback, void *data);
-static int h2o_nif_ipc_send_message(h2o_nif_ipc_queue_t *queue, h2o_nif_ipc_message_t *message);
+static h2o_nif_ipc_message_t *h2o_nif_ipc_create_message(size_t size, h2o_nif_ipc_callback_t *cb, h2o_nif_ipc_callback_t *dtor);
+static void h2o_nif_ipc_destroy_message(h2o_nif_ipc_message_t *message);
+// static int h2o_nif_ipc_send(h2o_nif_ipc_queue_t *queue, h2o_nif_ipc_callback_t *callback, void *data);
+static int h2o_nif_ipc_enqueue(h2o_nif_ipc_queue_t *queue, h2o_nif_ipc_message_t *message);
 
-inline int
-h2o_nif_ipc_send(h2o_nif_ipc_queue_t *queue, h2o_nif_ipc_callback_t *callback, void *data)
+// inline int
+// h2o_nif_ipc_send(h2o_nif_ipc_queue_t *queue, h2o_nif_ipc_callback_t *callback, void *data)
+// {
+//     h2o_nif_ipc_message_t *message = enif_alloc(sizeof(*message));
+//     message->callback = callback;
+//     message->data = data;
+//     return h2o_nif_ipc_enqueue(queue, message);
+// }
+
+inline h2o_nif_ipc_message_t *
+h2o_nif_ipc_create_message(size_t size, h2o_nif_ipc_callback_t *cb, h2o_nif_ipc_callback_t *dtor)
 {
-    h2o_nif_ipc_message_t *message = enif_alloc(sizeof(*message));
-    message->callback = callback;
-    message->data = data;
-    return h2o_nif_ipc_send_message(queue, message);
+    assert(size >= sizeof(h2o_nif_ipc_message_t));
+    h2o_nif_ipc_message_t *message = enif_alloc(size);
+    if (message == NULL) {
+        return NULL;
+    }
+    (void)memset(message, 0, size);
+    message->cb = cb;
+    message->dtor = dtor;
+    return message;
+}
+
+inline void
+h2o_nif_ipc_destroy_message(h2o_nif_ipc_message_t *message)
+{
+    if (message->dtor != NULL) {
+        message->dtor(message);
+    }
+    (void)enif_free(message);
+    return;
 }
 
 inline int
-h2o_nif_ipc_send_message(h2o_nif_ipc_queue_t *queue, h2o_nif_ipc_message_t *message)
+h2o_nif_ipc_enqueue(h2o_nif_ipc_queue_t *queue, h2o_nif_ipc_message_t *message)
 {
-    ck_fifo_mpmc_entry_t *fifo_entry = (ck_fifo_mpmc_entry_t *)malloc(sizeof(*fifo_entry));
-    if (fifo_entry == NULL) {
-        return 0;
-    }
-    while (ck_fifo_mpmc_tryenqueue(&queue->fifo, fifo_entry, (void *)message) == false) {
-        (void)ck_pr_stall();
-    }
-    if (atomic_flag_test_and_set_explicit(&queue->flag, memory_order_relaxed) == false) {
-        while (write(queue->write, "", 1) == -1 && errno == EINTR) {
+    // assert(queue != NULL);
+    // assert(message != NULL);
+    (void)ck_spinlock_lock_eb(&queue->fifo.spinlock);
+    (void)h2o_linklist_insert(&queue->fifo.messages, &message->_link);
+    (void)ck_spinlock_unlock(&queue->fifo.spinlock);
+    if (atomic_flag_test_and_set_explicit(&queue->async.flag, memory_order_relaxed) == false) {
+        while (write(queue->async.write, "", 1) == -1 && errno == EINTR) {
             (void)ck_pr_stall();
         }
     }
     return 1;
+    // ck_fifo_mpmc_entry_t *fifo_entry = (ck_fifo_mpmc_entry_t *)malloc(sizeof(*fifo_entry));
+    // if (fifo_entry == NULL) {
+    //     return 0;
+    // }
+    // while (ck_fifo_mpmc_tryenqueue(&queue->fifo, fifo_entry, (void *)message) == false) {
+    //     (void)ck_pr_stall();
+    // }
+    // if (atomic_flag_test_and_set_explicit(&queue->flag, memory_order_relaxed) == false) {
+    //     while (write(queue->write, "", 1) == -1 && errno == EINTR) {
+    //         (void)ck_pr_stall();
+    //     }
+    // }
+    // return 1;
 }
 
 #endif

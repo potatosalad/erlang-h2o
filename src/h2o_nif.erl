@@ -14,14 +14,24 @@
 -export([monitor_ack/1]).
 -export([roundtrip/0]).
 
+%% h2o_nif/batch.c.h
+-export([batch/1]).
+
 %% h2o_nif/filter.c.h
 -export([filter_read_start/1]).
 -export([filter_read/1]).
 -export([filter_event_setup_next_ostream/1]).
 
+%% h2o_nif/filter_event.c.h
+-export([filter_event_read_start/1]).
+-export([filter_event_read/1]).
+-export([filter_event_send/3]).
+
 %% h2o_nif/handler.c.h
 -export([handler_read_start/1]).
 -export([handler_read/1]).
+-export([handler_event_read/1]).
+-export([handler_event_batch/1]).
 -export([handler_event_reply/4]).
 -export([handler_event_reply_batch/1]).
 -export([handler_event_reply_multi/4]).
@@ -97,6 +107,13 @@ roundtrip() ->
 	erlang:nif_error({nif_not_loaded, ?MODULE}).
 
 %%%===================================================================
+%%% h2o_nif/batch.c.h
+%%%===================================================================
+
+batch(_List) ->
+	erlang:nif_error({nif_not_loaded, ?MODULE}).
+
+%%%===================================================================
 %%% h2o_nif/filter.c.h
 %%%===================================================================
 
@@ -110,6 +127,19 @@ filter_event_setup_next_ostream(_Port) ->
 	erlang:nif_error({nif_not_loaded, ?MODULE}).
 
 %%%===================================================================
+%%% h2o_nif/filter_event.c.h
+%%%===================================================================
+
+filter_event_read_start(_Port) ->
+	erlang:nif_error({nif_not_loaded, ?MODULE}).
+
+filter_event_read(_Port) ->
+	erlang:nif_error({nif_not_loaded, ?MODULE}).
+
+filter_event_send(_Port, _SendState, _Output) ->
+	erlang:nif_error({nif_not_loaded, ?MODULE}).
+
+%%%===================================================================
 %%% h2o_nif/handler.c.h
 %%%===================================================================
 
@@ -117,6 +147,12 @@ handler_read_start(_Port) ->
 	erlang:nif_error({nif_not_loaded, ?MODULE}).
 
 handler_read(_Port) ->
+	erlang:nif_error({nif_not_loaded, ?MODULE}).
+
+handler_event_read(_Port) ->
+	erlang:nif_error({nif_not_loaded, ?MODULE}).
+
+handler_event_batch(_List) ->
 	erlang:nif_error({nif_not_loaded, ?MODULE}).
 
 handler_event_reply(_Port, _Status, _Headers, _Body) ->

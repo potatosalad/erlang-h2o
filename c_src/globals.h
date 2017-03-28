@@ -30,7 +30,7 @@ extern int erts_fprintf(FILE *, const char *, ...);
         fflush(stderr);                                                                                                            \
     } while (0)
 
-// #define TRACE 1
+#define TRACE 1
 #ifdef TRACE
 #define TRACE_C(c)                                                                                                                 \
     do {                                                                                                                           \
@@ -76,12 +76,16 @@ typedef struct h2o_nif_data_0_s {
 #define h2o_nif_data_version 0
 #define h2o_nif_data_t h2o_nif_data_0_t
 
+typedef H2O_VECTOR(h2o_iovec_t) iovec_vector_t;
+
 /* Global Variables */
 
 extern ErlNifMutex *h2o_nif_mutex;
 extern ErlNifRWLock *h2o_nif_rwlock;
 extern h2o_sem_t h2o_ocsp_updater_semaphore;
 
+extern ERL_NIF_TERM ATOM_$gen_call;
+extern ERL_NIF_TERM ATOM_$gen_cast;
 extern ERL_NIF_TERM ATOM_accept;
 extern ERL_NIF_TERM ATOM_active;
 extern ERL_NIF_TERM ATOM_already_started;
@@ -91,9 +95,15 @@ extern ERL_NIF_TERM ATOM_children;
 extern ERL_NIF_TERM ATOM_closed;
 extern ERL_NIF_TERM ATOM_configured;
 extern ERL_NIF_TERM ATOM_connected;
+extern ERL_NIF_TERM ATOM_continue;
 extern ERL_NIF_TERM ATOM_eagain;
+extern ERL_NIF_TERM ATOM_entity;
 extern ERL_NIF_TERM ATOM_error;
 extern ERL_NIF_TERM ATOM_false;
+extern ERL_NIF_TERM ATOM_filter;
+extern ERL_NIF_TERM ATOM_fin;
+extern ERL_NIF_TERM ATOM_final_input;
+extern ERL_NIF_TERM ATOM_finalize;
 extern ERL_NIF_TERM ATOM_finalized;
 extern ERL_NIF_TERM ATOM_gc_avg;
 extern ERL_NIF_TERM ATOM_gc_max;
@@ -102,14 +112,25 @@ extern ERL_NIF_TERM ATOM_h2o_handler;
 extern ERL_NIF_TERM ATOM_h2o_port;
 extern ERL_NIF_TERM ATOM_h2o_port_closed;
 extern ERL_NIF_TERM ATOM_h2o_port_data;
+extern ERL_NIF_TERM ATOM_h2o_req;
+extern ERL_NIF_TERM ATOM_h2o_res;
+extern ERL_NIF_TERM ATOM_handler_event_read_body;
+extern ERL_NIF_TERM ATOM_handler_event_reply;
+extern ERL_NIF_TERM ATOM_handler_event_stream_body;
+extern ERL_NIF_TERM ATOM_handler_event_stream_reply;
 extern ERL_NIF_TERM ATOM_hm_stat;
+extern ERL_NIF_TERM ATOM_HTTP_1_0;
+extern ERL_NIF_TERM ATOM_HTTP_1_1;
+extern ERL_NIF_TERM ATOM_HTTP_2;
 extern ERL_NIF_TERM ATOM_in_progress;
 extern ERL_NIF_TERM ATOM_listening;
 extern ERL_NIF_TERM ATOM_max;
 extern ERL_NIF_TERM ATOM_mem_info;
 extern ERL_NIF_TERM ATOM_min;
+extern ERL_NIF_TERM ATOM_more;
 extern ERL_NIF_TERM ATOM_n_buckets;
 extern ERL_NIF_TERM ATOM_nil;
+extern ERL_NIF_TERM ATOM_nofin;
 extern ERL_NIF_TERM ATOM_num_accept;
 extern ERL_NIF_TERM ATOM_num_children;
 extern ERL_NIF_TERM ATOM_num_listen;
@@ -119,8 +140,12 @@ extern ERL_NIF_TERM ATOM_ok;
 extern ERL_NIF_TERM ATOM_once;
 extern ERL_NIF_TERM ATOM_open;
 extern ERL_NIF_TERM ATOM_parent;
+extern ERL_NIF_TERM ATOM_port_connect;
 extern ERL_NIF_TERM ATOM_ports_stat;
 extern ERL_NIF_TERM ATOM_ready_input;
+extern ERL_NIF_TERM ATOM_reply;
+extern ERL_NIF_TERM ATOM_requested;
+extern ERL_NIF_TERM ATOM_send_data;
 extern ERL_NIF_TERM ATOM_seq;
 extern ERL_NIF_TERM ATOM_seq_ports;
 extern ERL_NIF_TERM ATOM_size;
@@ -136,5 +161,22 @@ extern ERL_NIF_TERM ATOM_undefined;
 extern int h2o_nif_globals_load(ErlNifEnv *env, h2o_nif_data_t *nif_data);
 extern int h2o_nif_globals_upgrade(ErlNifEnv *env, void **priv_data, void **old_priv_data, ERL_NIF_TERM load_info);
 extern void h2o_nif_globals_unload(ErlNifEnv *env, h2o_nif_data_t *nif_data);
+
+/* Global Functions */
+
+static ERL_NIF_TERM h2o_req_version_to_atom(h2o_req_t *req);
+
+inline ERL_NIF_TERM
+h2o_req_version_to_atom(h2o_req_t *req)
+{
+    if (req->version < 0x200) {
+        assert(req->version <= 0x109);
+        if ((req->version & 0xff) == 0x00) {
+            return ATOM_HTTP_1_0;
+        }
+        return ATOM_HTTP_1_1;
+    }
+    return ATOM_HTTP_2;
+}
 
 #endif

@@ -11,8 +11,9 @@
 #define H2O_NIF_PORT_FLAG_CFG 0x0004
 #define H2O_NIF_PORT_FLAG_SRT 0x0008
 #define H2O_NIF_PORT_FLAG_LST 0x0010
-#define H2O_NIF_PORT_FLAG_PRO 0x0020
-#define H2O_NIF_PORT_FLAG_FIN 0x0040
+#define H2O_NIF_PORT_FLAG_REQ 0x0020
+#define H2O_NIF_PORT_FLAG_DAT 0x0040
+#define H2O_NIF_PORT_FLAG_FIN 0x0080
 
 #define H2O_NIF_PORT_STATE_CLOSED (0)
 #define H2O_NIF_PORT_STATE_ALLOCATED (H2O_NIF_PORT_FLAG_ALC)
@@ -20,7 +21,8 @@
 #define H2O_NIF_PORT_STATE_CONFIGURED (H2O_NIF_PORT_STATE_OPEN | H2O_NIF_PORT_FLAG_CFG)
 #define H2O_NIF_PORT_STATE_STARTED (H2O_NIF_PORT_STATE_CONFIGURED | H2O_NIF_PORT_FLAG_SRT)
 #define H2O_NIF_PORT_STATE_LISTENING (H2O_NIF_PORT_STATE_OPEN | H2O_NIF_PORT_FLAG_LST)
-#define H2O_NIF_PORT_STATE_IN_PROGRESS (H2O_NIF_PORT_STATE_OPEN | H2O_NIF_PORT_FLAG_PRO)
+#define H2O_NIF_PORT_STATE_REQUESTED (H2O_NIF_PORT_STATE_OPEN | H2O_NIF_PORT_FLAG_REQ)
+#define H2O_NIF_PORT_STATE_SEND_DATA (H2O_NIF_PORT_STATE_REQUESTED | H2O_NIF_PORT_FLAG_DAT)
 #define H2O_NIF_PORT_STATE_FINALIZED (H2O_NIF_PORT_STATE_OPEN | H2O_NIF_PORT_FLAG_FIN)
 
 #define H2O_NIF_PORT_TYPE_NONE 0
@@ -113,9 +115,28 @@ extern int h2o_nif_port_open(h2o_nif_port_t *parent, size_t size, h2o_nif_port_t
 extern int h2o_nif_port_close(h2o_nif_port_t *port, ErlNifEnv *env, ERL_NIF_TERM *out);
 extern int h2o_nif_port_close_silent(h2o_nif_port_t *port, ErlNifEnv *env, ERL_NIF_TERM *out);
 extern int __h2o_nif_port_close(h2o_nif_port_t *port, ErlNifEnv *env, ERL_NIF_TERM *out);
+static void h2o_nif_port_connect(h2o_nif_port_t *port, ErlNifEnv *env, ErlNifPid new_owner);
 static ErlNifPid h2o_nif_port_get_owner(h2o_nif_port_t *port);
 static void h2o_nif_port_set_owner(h2o_nif_port_t *port, ErlNifPid new_owner);
 static int h2o_nif_port_send(ErlNifEnv *env, h2o_nif_port_t *port, ErlNifEnv *msg_env, ERL_NIF_TERM msg);
+
+inline void
+h2o_nif_port_connect(h2o_nif_port_t *port, ErlNifEnv *env, ErlNifPid new_owner)
+{
+    (void)h2o_nif_port_set_owner(port, new_owner);
+    if (atomic_load_explicit(&port->state, memory_order_relaxed) == H2O_NIF_PORT_STATE_CLOSED) {
+        if (((port->on_close.state & H2O_NIF_PORT_STATE_OPEN) == H2O_NIF_PORT_STATE_OPEN) && !port->on_close.silent) {
+            ErlNifEnv *msg_env = (env != NULL) ? env : enif_alloc_env();
+            ERL_NIF_TERM msg = enif_make_tuple2(msg_env, ATOM_h2o_port_closed, h2o_nif_port_make(msg_env, port));
+            if (env != NULL) {
+                (void)h2o_nif_port_send(msg_env, port, NULL, msg);
+            } else {
+                (void)h2o_nif_port_send(NULL, port, msg_env, msg);
+                (void)enif_free_env(msg_env);
+            }
+        }
+    }
+}
 
 inline ErlNifPid
 h2o_nif_port_get_owner(h2o_nif_port_t *port)
@@ -143,7 +164,8 @@ static int h2o_nif_port_is_open(h2o_nif_port_t *port);
 static int h2o_nif_port_is_configured(h2o_nif_port_t *port);
 static int h2o_nif_port_is_started(h2o_nif_port_t *port);
 static int h2o_nif_port_is_listening(h2o_nif_port_t *port);
-static int h2o_nif_port_is_in_progress(h2o_nif_port_t *port);
+static int h2o_nif_port_is_requested(h2o_nif_port_t *port);
+static int h2o_nif_port_is_send_data(h2o_nif_port_t *port);
 static int h2o_nif_port_is_finalized(h2o_nif_port_t *port);
 static ERL_NIF_TERM h2o_nif_port_state_to_atom(h2o_nif_port_t *port);
 
@@ -180,10 +202,17 @@ h2o_nif_port_is_listening(h2o_nif_port_t *port)
 }
 
 inline int
-h2o_nif_port_is_in_progress(h2o_nif_port_t *port)
+h2o_nif_port_is_requested(h2o_nif_port_t *port)
 {
-    return ((atomic_load_explicit(&port->state, memory_order_relaxed) & H2O_NIF_PORT_STATE_IN_PROGRESS) ==
-            H2O_NIF_PORT_STATE_IN_PROGRESS);
+    return ((atomic_load_explicit(&port->state, memory_order_relaxed) & H2O_NIF_PORT_STATE_REQUESTED) ==
+            H2O_NIF_PORT_STATE_REQUESTED);
+}
+
+inline int
+h2o_nif_port_is_send_data(h2o_nif_port_t *port)
+{
+    return ((atomic_load_explicit(&port->state, memory_order_relaxed) & H2O_NIF_PORT_STATE_SEND_DATA) ==
+            H2O_NIF_PORT_STATE_SEND_DATA);
 }
 
 inline int
@@ -206,8 +235,10 @@ h2o_nif_port_state_to_atom(h2o_nif_port_t *port)
         value = ATOM_configured;
     } else if ((state & H2O_NIF_PORT_STATE_LISTENING) == H2O_NIF_PORT_STATE_LISTENING) {
         value = ATOM_listening;
-    } else if ((state & H2O_NIF_PORT_STATE_IN_PROGRESS) == H2O_NIF_PORT_STATE_IN_PROGRESS) {
-        value = ATOM_in_progress;
+    } else if ((state & H2O_NIF_PORT_STATE_SEND_DATA) == H2O_NIF_PORT_STATE_SEND_DATA) {
+        value = ATOM_send_data;
+    } else if ((state & H2O_NIF_PORT_STATE_REQUESTED) == H2O_NIF_PORT_STATE_REQUESTED) {
+        value = ATOM_requested;
     } else if ((state & H2O_NIF_PORT_STATE_FINALIZED) == H2O_NIF_PORT_STATE_FINALIZED) {
         value = ATOM_finalized;
     } else if ((state & H2O_NIF_PORT_STATE_OPEN) == H2O_NIF_PORT_STATE_OPEN) {
@@ -226,7 +257,8 @@ static int h2o_nif_port_set_open(h2o_nif_port_t *port);
 static int h2o_nif_port_set_configured(h2o_nif_port_t *port);
 static int h2o_nif_port_set_started(h2o_nif_port_t *port);
 static int h2o_nif_port_set_listening(h2o_nif_port_t *port);
-static int h2o_nif_port_set_in_progress(h2o_nif_port_t *port);
+static int h2o_nif_port_set_requested(h2o_nif_port_t *port);
+static int h2o_nif_port_set_send_data(h2o_nif_port_t *port);
 static int h2o_nif_port_set_finalized(h2o_nif_port_t *port);
 
 inline int
@@ -279,15 +311,26 @@ h2o_nif_port_set_listening(h2o_nif_port_t *port)
 }
 
 inline int
-h2o_nif_port_set_in_progress(h2o_nif_port_t *port)
+h2o_nif_port_set_requested(h2o_nif_port_t *port)
 {
-    return (__h2o_nif_port_compare_and_swap_state(port, H2O_NIF_PORT_STATE_ALLOCATED, H2O_NIF_PORT_STATE_IN_PROGRESS));
+    return (__h2o_nif_port_compare_and_swap_state(port, H2O_NIF_PORT_STATE_ALLOCATED, H2O_NIF_PORT_STATE_REQUESTED));
+}
+
+inline int
+h2o_nif_port_set_send_data(h2o_nif_port_t *port)
+{
+    return (__h2o_nif_port_compare_and_swap_state(port, H2O_NIF_PORT_STATE_REQUESTED, H2O_NIF_PORT_STATE_SEND_DATA));
 }
 
 inline int
 h2o_nif_port_set_finalized(h2o_nif_port_t *port)
 {
-    return (__h2o_nif_port_compare_and_swap_state(port, H2O_NIF_PORT_STATE_IN_PROGRESS, H2O_NIF_PORT_STATE_FINALIZED));
+    int result;
+    result = __h2o_nif_port_compare_and_swap_state(port, H2O_NIF_PORT_STATE_REQUESTED, H2O_NIF_PORT_STATE_FINALIZED);
+    if (!result) {
+        result = __h2o_nif_port_compare_and_swap_state(port, H2O_NIF_PORT_STATE_SEND_DATA, H2O_NIF_PORT_STATE_FINALIZED);
+    }
+    return result;
 }
 
 #endif

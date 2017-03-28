@@ -9,7 +9,8 @@
 	{applications, [
 		kernel,
 		stdlib,
-		ranch
+		ranch,
+		cowlib
 	]},
 	{modules, []},
 	{maintainers, ["Andrew Bennett"]},
