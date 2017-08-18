@@ -7,12 +7,12 @@
  * Erlang NIF functions
  */
 
-static ERL_NIF_TERM h2o_nif_port_close_1(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]);
+// static ERL_NIF_TERM h2o_nif_port_close_1(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]);
 
 #include "h2o_nif/batch.c.h"
 #include "h2o_nif/filter.c.h"
 #include "h2o_nif/filter_event.c.h"
-#include "h2o_nif/handler.c.h"
+// #include "h2o_nif/handler.c.h"
 #include "h2o_nif/logger.c.h"
 #include "h2o_nif/port.c.h"
 #include "h2o_nif/server.c.h"
@@ -32,14 +32,14 @@ h2o_nif_load(ErlNifEnv *env, void **priv_data, ERL_NIF_TERM load_info)
     if (h2o_nif_rwlock == NULL) {
         h2o_nif_rwlock = enif_rwlock_create("h2o_nif_rwlock");
     }
-    h2o_nif_data_t *nif_data = enif_alloc(sizeof(*nif_data));
+    h2o_nif_data_t *nif_data = mem_alloc(sizeof(*nif_data));
     if (nif_data == NULL) {
         (void)enif_mutex_unlock(h2o_nif_mutex);
         return -1;
     }
     nif_data->version = h2o_nif_data_version;
     if (h2o_nif_globals_load(env, nif_data) != 0) {
-        (void)enif_free(nif_data);
+        (void)mem_free(nif_data);
         (void)enif_mutex_unlock(h2o_nif_mutex);
         return -1;
     }
@@ -66,7 +66,7 @@ h2o_nif_unload(ErlNifEnv *env, void *priv_data)
     h2o_nif_data_t *nif_data = (h2o_nif_data_t *)priv_data;
     (void)h2o_nif_globals_unload(env, nif_data);
     if (priv_data != NULL) {
-        (void)enif_free(priv_data);
+        (void)mem_free(priv_data);
     }
     if (h2o_nif_mutex != NULL) {
         (void)enif_mutex_unlock(h2o_nif_mutex);
@@ -85,14 +85,14 @@ static ErlNifFunc h2o_nif_funcs[] = {
     // h2o_nif/filter_event.c.h
     {"filter_event_read_start", 1, h2o_nif_filter_event_read_start_1},
     {"filter_event_read", 1, h2o_nif_filter_event_read_1},
-    {"filter_event_send", 3, h2o_nif_filter_event_send_3},
-    // h2o_nif/handler.c.h
-    {"handler_read_start", 1, h2o_nif_handler_read_start_1},
-    {"handler_read", 1, h2o_nif_handler_read_1},
-    {"handler_event_batch", 1, h2o_nif_handler_event_batch_1},
-    // {"handler_event_reply", 4, h2o_nif_handler_event_reply_4},
-    // {"handler_event_reply_batch", 1, h2o_nif_handler_event_reply_batch_1},
-    // {"handler_event_reply_multi", 4, h2o_nif_handler_event_reply_multi_4},
+    // {"filter_event_send", 3, h2o_nif_filter_event_send_3},
+    // // h2o_nif/handler.c.h
+    // {"handler_read_start", 1, h2o_nif_handler_read_start_1},
+    // {"handler_read", 1, h2o_nif_handler_read_1},
+    // {"handler_event_batch", 1, h2o_nif_handler_event_batch_1},
+    // // {"handler_event_reply", 4, h2o_nif_handler_event_reply_4},
+    // // {"handler_event_reply_batch", 1, h2o_nif_handler_event_reply_batch_1},
+    // // {"handler_event_reply_multi", 4, h2o_nif_handler_event_reply_multi_4},
     // h2o_nif/logger.c.h
     {"logger_read_start", 1, h2o_nif_logger_read_start_1},
     {"logger_read", 1, h2o_nif_logger_read_1},

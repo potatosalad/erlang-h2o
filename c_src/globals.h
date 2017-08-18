@@ -30,7 +30,7 @@ extern int erts_fprintf(FILE *, const char *, ...);
         fflush(stderr);                                                                                                            \
     } while (0)
 
-#define TRACE 1
+// #define TRACE 1
 #ifdef TRACE
 #define TRACE_C(c)                                                                                                                 \
     do {                                                                                                                           \
@@ -44,6 +44,7 @@ extern int erts_fprintf(FILE *, const char *, ...);
     } while (0)
 #define TRACE_F(...)                                                                                                               \
     do {                                                                                                                           \
+        erts_fprintf(stderr, "%p ", (void *)enif_thread_self());                                                                   \
         erts_fprintf(stderr, __VA_ARGS__);                                                                                         \
         fflush(stderr);                                                                                                            \
     } while (0)
@@ -51,6 +52,17 @@ extern int erts_fprintf(FILE *, const char *, ...);
 #define TRACE_C(c) ((void)(0))
 #define TRACE_S(s) ((void)(0))
 #define TRACE_F(...) ((void)(0))
+#endif
+
+#define TRACE_MEM 1
+#ifdef TRACE_MEM
+#define mem_alloc(sz) malloc(sz)
+#define mem_realloc(p, sz) realloc(p, sz)
+#define mem_free(p) free(p)
+#else
+#define mem_alloc(sz) enif_alloc(sz)
+#define mem_realloc(p, sz) enif_realloc(p, sz)
+#define mem_free(p) enif_free(p)
 #endif
 
 #define MAX_PER_SLICE 20000 // 20 KB
@@ -161,22 +173,5 @@ extern ERL_NIF_TERM ATOM_undefined;
 extern int h2o_nif_globals_load(ErlNifEnv *env, h2o_nif_data_t *nif_data);
 extern int h2o_nif_globals_upgrade(ErlNifEnv *env, void **priv_data, void **old_priv_data, ERL_NIF_TERM load_info);
 extern void h2o_nif_globals_unload(ErlNifEnv *env, h2o_nif_data_t *nif_data);
-
-/* Global Functions */
-
-static ERL_NIF_TERM h2o_req_version_to_atom(h2o_req_t *req);
-
-inline ERL_NIF_TERM
-h2o_req_version_to_atom(h2o_req_t *req)
-{
-    if (req->version < 0x200) {
-        assert(req->version <= 0x109);
-        if ((req->version & 0xff) == 0x00) {
-            return ATOM_HTTP_1_0;
-        }
-        return ATOM_HTTP_1_1;
-    }
-    return ATOM_HTTP_2;
-}
 
 #endif

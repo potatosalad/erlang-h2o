@@ -1,6 +1,11 @@
 // -*- mode: c; tab-width: 4; indent-tabs-mode: nil; st-rulers: [132] -*-
 // vim: ts=4 sw=4 ft=c et
 
+#if defined(__sun) && defined(__SVR4)
+#define __EXTENSIONS__ 1
+#define _POSIX_C_SOURCE 200809L
+#endif
+
 #include <arpa/inet.h>
 #include <assert.h>
 #include <errno.h>
@@ -16,6 +21,8 @@
 #include <signal.h>
 #include <spawn.h>
 #include <stdio.h>
+#include <string.h>
+#include <strings.h>
 #include <unistd.h>
 #include <sys/resource.h>
 #include <sys/stat.h>
@@ -45,42 +52,44 @@
 
 /* Port Functions */
 
-static ERL_NIF_TERM h2o_nif_server_on_close(ErlNifEnv *env, h2o_nif_port_t *port, int is_direct_call);
+static ERL_NIF_TERM h2o_nif_server_stop(ErlNifEnv *env, h2o_nif_port_t *port, int is_direct_call);
 static void h2o_nif_server_dtor(ErlNifEnv *env, h2o_nif_port_t *port);
+
+static h2o_nif_port_init_t h2o_nif_server_init = {
+    .type = H2O_NIF_PORT_TYPE_SERVER, .stop = h2o_nif_server_stop, .dtor = h2o_nif_server_dtor,
+};
 
 int
 h2o_nif_server_open(h2o_nif_server_t **serverp)
 {
     assert(serverp != NULL);
     h2o_nif_server_t *server = NULL;
-    if (!h2o_nif_port_open(NULL, sizeof(h2o_nif_server_t), (h2o_nif_port_t **)&server)) {
+    if (!h2o_nif_port_open(NULL, &h2o_nif_server_init, sizeof(h2o_nif_server_t), (h2o_nif_port_t **)&server)) {
         *serverp = NULL;
         return 0;
     }
-    server->super.dtor = h2o_nif_server_dtor;
-    server->super.type = H2O_NIF_PORT_TYPE_SERVER;
     server->launch_time = time(NULL);
     server->threads = NULL;
-    (void)atomic_init(&server->shutdown_requested, 0);
-    (void)atomic_init(&server->initialized_threads, 0);
-    (void)atomic_init(&server->shutdown_threads, 0);
-    (void)atomic_init(&server->state._num_connections, 0);
-    (void)atomic_init(&server->state._num_sessions, 0);
+    atomic_init(&server->shutdown_requested, 0);
+    atomic_init(&server->initialized_threads, 0);
+    atomic_init(&server->shutdown_threads, 0);
+    atomic_init(&server->state._num_connections, 0);
+    atomic_init(&server->state._num_sessions, 0);
     if (!h2o_nif_config_init(&server->config)) {
-        (void)h2o_nif_port_close(&server->super, NULL, NULL);
+        server->super.stop = NULL;
+        (void)h2o_nif_port_stop_quiet(&server->super, NULL, NULL);
         *serverp = NULL;
         return 0;
     }
     (void)h2o_nif_port_keep(&server->super);
-    server->super.on_close.callback = h2o_nif_server_on_close;
     *serverp = server;
     return 1;
 }
 
 static ERL_NIF_TERM
-h2o_nif_server_on_close(ErlNifEnv *env, h2o_nif_port_t *port, int is_direct_call)
+h2o_nif_server_stop(ErlNifEnv *env, h2o_nif_port_t *port, int is_direct_call)
 {
-    TRACE_F("h2o_nif_server_on_close:%s:%d\n", __FILE__, __LINE__);
+    TRACE_F("h2o_nif_server_stop:%s:%d\n", __FILE__, __LINE__);
     assert(port->type == H2O_NIF_PORT_TYPE_SERVER);
     h2o_nif_server_t *server = (h2o_nif_server_t *)port;
     (void)h2o_nif_config_dispose(&server->config);
@@ -167,7 +176,7 @@ h2o_nif_server_start(h2o_nif_server_t *server)
     assert(config->num_threads != 0);
 
     /* start the threads */
-    server->threads = enif_alloc(sizeof(server->threads[0]) * config->num_threads);
+    server->threads = mem_alloc(sizeof(server->threads[0]) * config->num_threads);
     (void)memset(server->threads, 0, sizeof(server->threads[0]) * config->num_threads);
     size_t i;
     char name[32];
@@ -196,7 +205,7 @@ h2o_nif_server_run_loop(void *arg)
         return NULL;
     }
     h2o_nif_config_t *config = &server->config;
-    h2o_nif_srv_listen_t *listeners = enif_alloc(sizeof(*listeners) * config->num_listeners);
+    h2o_nif_srv_listen_t *listeners = mem_alloc(sizeof(*listeners) * config->num_listeners);
     (void)memset(listeners, 0, sizeof(*listeners) * config->num_listeners);
     size_t i;
 
@@ -282,7 +291,7 @@ h2o_nif_server_run_loop(void *arg)
     (void)h2o_evloop_destroy(thread->ctx.super.loop);
 
     /* free the listeners */
-    (void)enif_free(listeners);
+    (void)mem_free(listeners);
 
     (void)atomic_fetch_add_explicit(&server->shutdown_threads, 1, memory_order_relaxed);
 
@@ -394,7 +403,7 @@ on_accept(h2o_socket_t *listener, const char *err)
 //         (void)h2o_linklist_unlink(&message->link);
 //         (void)ctx->callback(ctx->request, ctx);
 //         (void)h2o_nif_request_release(ctx->request);
-//         (void)enif_free(ctx);
+//         (void)mem_free(ctx);
 //     }
 // }
 

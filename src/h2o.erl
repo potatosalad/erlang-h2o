@@ -20,6 +20,9 @@
 -export([example/0]).
 -export([example2/0]).
 -export([example3/0]).
+-export([example4/0]).
+-export([example5/0]).
+-export([example6/0]).
 % -export([server_open/0]).
 % -export([server_getcfg/1]).
 % -export([server_setcfg/2]).
@@ -182,6 +185,78 @@ example3() ->
 				{<<"paths">>, [
 					{<<"/">>, [
 						{<<"file.dir">>, <<"/Users/andrew/Documents">>},
+						{<<"erlang.filter">>, {toppage_filter, []}}
+					]}
+				]}
+			]}
+		]}
+	],
+	{ok, Server} = h2o_server:open(),
+	{ok, Bindings} = h2o_server:setcfg(Server, Config),
+	ok = h2o_server:start(Server),
+	[{Module, Port, Path, Opts}] = Bindings,
+	{ok, F} = Module:start_link(Port, Path, Opts),
+	ok = h2o_port:controlling_process(Port, F),
+	F ! {shoot, self(), Port},
+	ok.
+
+example4() ->
+	Config = [
+		{<<"listen">>, 8080},
+		{<<"num-threads">>, 1},
+		{<<"erlang.logger">>, {toppage_logger, []}},
+		{<<"hosts">>, [
+			{<<"*">>, [
+				{<<"paths">>, [
+					{<<"/">>, [
+						{<<"file.dir">>, <<"/Users/andrew/Documents">>}
+					]}
+				]}
+			]}
+		]}
+	],
+	{ok, Server} = h2o_server:open(),
+	{ok, Bindings} = h2o_server:setcfg(Server, Config),
+	ok = h2o_server:start(Server),
+	[{Module, Port, Path, Opts}] = Bindings,
+	{ok, L} = Module:start_link(Port, Path, Opts),
+	ok = h2o_port:controlling_process(Port, L),
+	L ! {shoot, self(), Port},
+	ok.
+
+example5() ->
+	Config = [
+		{<<"listen">>, 8080},
+		{<<"num-threads">>, 1},
+		{<<"erlang.logger">>, {toppage_logger, []}},
+		{<<"hosts">>, [
+			{<<"*">>, [
+				{<<"paths">>, [
+					{<<"/">>, [
+						{<<"file.dir">>, <<"/root/examples">>}
+					]}
+				]}
+			]}
+		]}
+	],
+	{ok, Server} = h2o_server:open(),
+	{ok, Bindings} = h2o_server:setcfg(Server, Config),
+	ok = h2o_server:start(Server),
+	[{Module, Port, Path, Opts}] = Bindings,
+	{ok, L} = Module:start_link(Port, Path, Opts),
+	ok = h2o_port:controlling_process(Port, L),
+	L ! {shoot, self(), Port},
+	ok.
+
+example6() ->
+	Config = [
+		{<<"listen">>, 8080},
+		{<<"num-threads">>, 1},
+		{<<"hosts">>, [
+			{<<"*">>, [
+				{<<"paths">>, [
+					{<<"/">>, [
+						{<<"file.dir">>, <<"/root/examples">>},
 						{<<"erlang.filter">>, {toppage_filter, []}}
 					]}
 				]}

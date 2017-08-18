@@ -6,56 +6,78 @@
 %%% @doc
 %%%
 %%% @end
-%%% Created :  15 Mar 2017 by Andrew Bennett <andrew@pixid.com>
+%%% Created :  30 Mar 2017 by Andrew Bennett <andrew@pixid.com>
 %%%-------------------------------------------------------------------
 -module(h2o_logger).
 
--callback log_access(Req :: h2o_port:ref(), Host :: binary(), Path :: binary(), Opts :: any()) -> ok.
+-include("h2o_req.hrl").
 
 %% Public API
--export([start_link/5]).
--export([flush/1]).
--export([read/1]).
+-export([start_link/3]).
+-export([pretty_print/1]).
 
 %% Private API
--export([init/6]).
+-export([init/4]).
+
+%% Records
+-record(state, {
+	parent = undefined :: undefined | pid(),
+	port   = undefined :: undefined | reference(),
+	path   = undefined :: undefined | [binary()],
+	opts   = undefined :: undefined | any()
+}).
 
 %%%===================================================================
 %%% Public API
 %%%===================================================================
 
-start_link(Host, Path, Handler, Opts, Port) ->
-	Pid = proc_lib:spawn_link(?MODULE, init, [self(), Host, Path, Handler, Opts, Port]),
-	{ok, Pid}.
-
-flush(Port) ->
-	receive
-		{h2o_port_data, Port, Data} ->
-			ok = io:format("~s", [Data]),
-			flush(Port)
-	after
-		0 ->
-			ok
-	end.
-
-read(Port) ->
-	ok = h2o_nif:logger_read_start(Port),
-	receive
-		{h2o_port_data, Port, ready_input} ->
-			h2o_nif:logger_read(Port)
-	end.
+start_link(Port, Path, Opts) ->
+	proc_lib:start_link(?MODULE, init, [self(), Port, Path, Opts]).
 
 %%%===================================================================
 %%% Private API
 %%%===================================================================
 
-init(_Parent, Host, Path, Handler, Opts, Port) ->
-	case h2o_port:accept(Port) of
-		{ok, Socket} ->
-			ok = Handler:execute(Socket, Host, Path, Opts),
-			exit(normal)
-	end.
+%% @private
+init(Parent, Port, Path, Opts) ->
+	ok = proc_lib:init_ack(Parent, {ok, self()}),
+	ok = receive
+		{shoot, Parent, Port} ->
+			ok
+	end,
+	ok = h2o_nif:logger_read_start(Port),
+	State = #state{parent=Parent, port=Port, path=Path, opts=Opts},
+	loop(State).
 
 %%%-------------------------------------------------------------------
 %%% Internal functions
 %%%-------------------------------------------------------------------
+
+%% @private
+loop(State=#state{port=Port}) ->
+	receive
+		{h2o_port_data, Port, ready_input} ->
+			dispatch(h2o_nif:logger_read(Port), State);
+		Info ->
+			error_logger:error_msg(
+				"~p received unexpected message ~p~n",
+				[?MODULE, Info]),
+			loop(State)
+	end.
+
+pretty_print(Record) ->
+	io_lib_pretty:print(Record, fun pretty_print/2).
+
+pretty_print(h2o_req, N) ->
+	N = record_info(size, h2o_req) - 1,
+	record_info(fields, h2o_req);
+pretty_print(h2o_res, N) ->
+	N = record_info(size, h2o_res) - 1,
+	record_info(fields, h2o_res);
+pretty_print(_, _) ->
+	[].
+
+%% @private
+dispatch(Events, State=#state{opts={Filter, Opts, _, _}}) ->
+	ok = Filter:log_access(Events, Opts),
+	loop(State).

@@ -51,17 +51,22 @@
 % 	end.
 
 on_setup_ostream(Req, []) ->
+	% io:format("on_setup_ostream: ~p~n", [Req]),
 	{ok, Req}.
 
 on_ready_input(Req) ->
-	% Input = h2o_filter_event:read(Req),
+	Input = h2o_filter_event:read(Req),
+	on_input(Input, Req).
 	% NewReq = h2o_filter_event:send(Req, nofin, h2o_nif:string_strtoupper(Input)),
-	{ok, Req}.
+	% {ok, Req}.
 
 on_input(Input, Req) ->
+	% io:format("on_input: ~p~n", [Input]),
+	% {ok, Req}.
 	NewReq = h2o_filter_event:send(Req, nofin, Input),
 	{ok, NewReq}.
 
 on_final_input(Req) ->
+	% io:format("on_final_input: ~p~n", [Req]),
 	_ = h2o_filter_event:send(Req, fin, <<>>),
 	ok.

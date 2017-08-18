@@ -34,13 +34,14 @@ struct h2o_nif_batch_cast_s {
 };
 
 static h2o_nif_batch_call_t h2o_nif_batch_call[] = {
-    /* 0 */ {1, &filter_event_read_1},
+    // /* 0 */ {1, &filter_event_read_1},
 };
 static size_t h2o_nif_batch_call_max = sizeof(h2o_nif_batch_call) / sizeof(h2o_nif_batch_call_t);
 
 static h2o_nif_batch_cast_t h2o_nif_batch_cast[] = {
     /* 0 */ {2, &port_connect_2},
-    /* 1 */ {3, &filter_event_read_entity_3},
+    // /* 1 */ {3, &filter_event_read_entity_3},
+    {0, NULL},
     /* 2 */ {3, &filter_event_send_3},
 };
 static size_t h2o_nif_batch_cast_max = sizeof(h2o_nif_batch_cast) / sizeof(h2o_nif_batch_cast_t);
@@ -72,13 +73,15 @@ h2o_nif_batch_unload(ErlNifEnv *env, h2o_nif_data_t *nif_data)
 int
 h2o_nif_batch_create(ErlNifEnv *env, ERL_NIF_TERM list, h2o_nif_batch_t **batchp)
 {
+    TRACE_F("h2o_nif_batch_create:%s:%d\n", __FILE__, __LINE__);
     assert(batchp != NULL);
-    size_t length;
+    unsigned length;
     if (!enif_get_list_length(env, list, (unsigned *)&length)) {
         *batchp = NULL;
         return 0;
     }
     size_t size = sizeof(h2o_nif_batch_t) + (sizeof(h2o_nif_batch_req_t) * length);
+    // TRACE_F("h2o_nif_batch_create:%s:%d LENGTH=%lu, SIZE=%lu\n", __FILE__, __LINE__, length, size);
     h2o_nif_batch_t *batch = (h2o_nif_batch_t *)enif_alloc_resource(h2o_nif_batch_resource_type, size);
     if (batch == NULL) {
         *batchp = NULL;
@@ -86,7 +89,7 @@ h2o_nif_batch_create(ErlNifEnv *env, ERL_NIF_TERM list, h2o_nif_batch_t **batchp
     }
     (void)memset(batch, 0, size);
     batch->max_per_slice = MAX_PER_SLICE;
-    batch->length = length;
+    batch->length = (size_t)length;
     batch->offset = 0;
     batch->num_req = 0;
     batch->req = NULL;
@@ -228,7 +231,7 @@ h2o_nif_batch_resolve(h2o_nif_batch_t *batch, ErlNifEnv *env)
 //     struct a_s *req = (struct a_s *)super;
 //     (void)enif_send(env, &req->call.to, NULL, enif_make_tuple2(env, enif_make_copy(env, req->call.tag), enif_make_int(env, req->a
 //     + req->b)));
-//     (void)enif_free(req);
+//     (void)mem_free(req);
 //     return 1;
 // }
 
@@ -381,6 +384,6 @@ h2o_nif_batch_reserve_req(h2o_nif_batch_t *batch)
         req->next = batch->req;
     }
     batch->req = req;
-    (void)atomic_init(&req->refc, 0);
+    atomic_init(&req->refc, 0);
     return req;
 }

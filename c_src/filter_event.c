@@ -8,227 +8,74 @@
 #include <h2o/http2.h>
 #include <h2o/http2_internal.h>
 #include <h2o/serverutil.h>
-
-/* Types */
-
-typedef struct __deferred_action_s __deferred_action_t;
-
-struct __deferred_action_s {
-    h2o_timeout_entry_t timeout;
-    h2o_nif_filter_event_t *event;
-    h2o_req_t *req;
-};
-
-static void on_send(h2o_ostream_t *super, h2o_req_t *req, h2o_iovec_t *inbufs, size_t inbufcnt, h2o_send_state_t state);
-static void on_stop(h2o_ostream_t *super, h2o_req_t *req);
-static __deferred_action_t *create_deferred_action(h2o_nif_filter_event_t *event, h2o_req_t *req, h2o_timeout_cb cb);
-static void on_deferred_action_dispose(void *_action);
-static void on_ready_input_cb(h2o_timeout_entry_t *entry);
-// static void on_final_input_cb(h2o_timeout_entry_t *entry);
+#include "sds.h"
 
 /* Resource Functions */
 
-ERL_NIF_TERM
-h2o_nif_filter_event_make(ErlNifEnv *env, h2o_nif_filter_event_t *event)
-{
-    TRACE_F("h2o_nif_filter_event_make:%s:%d\n", __FILE__, __LINE__);
-
-#define h2o_iovec_to_binary(iov, binp)                                                                                             \
-    do {                                                                                                                           \
-        buf = enif_make_new_binary(env, (iov).len, binp);                                                                          \
-        (void)memcpy(buf, (iov).base, (iov).len);                                                                                  \
-    } while (0)
-
-    h2o_req_t *req = event->req;
-    h2o_http2_stream_t *stream = NULL;
-    ERL_NIF_TERM tmp;
-    ERL_NIF_TERM key;
-    ERL_NIF_TERM val;
-    unsigned char *buf = NULL;
-    ERL_NIF_TERM tuple[23];
-    size_t i = 0;
-    if (req->version >= 0x200) {
-        stream = H2O_STRUCT_FROM_MEMBER(h2o_http2_stream_t, req, req);
-    }
-    // if (req->entity.base != NULL) {
-    //     DEBUG_F("entity: %.*s\n", req->entity.len, req->entity.base);
-    // }
-    /* record: h2o_req */
-    tuple[i++] = ATOM_h2o_req;
-    /* event */
-    tuple[i++] = h2o_nif_port_make(env, &event->super);
-    /* event_type */
-    tuple[i++] = ATOM_filter;
-    /* authority */
-    h2o_iovec_to_binary(req->authority, &tmp);
-    tuple[i++] = tmp;
-    /* body_length */
-    tuple[i++] = (req->entity.base == NULL) ? enif_make_ulong(env, 0) : enif_make_ulong(env, req->entity.len);
-    /* has_body */
-    tuple[i++] = (req->entity.base == NULL) ? ATOM_false : ATOM_true;
-    /* has_read_body */
-    tuple[i++] = ATOM_false;
-    /* has_sent_resp */
-    tuple[i++] = ATOM_false;
-    /* headers */
-    {
-        h2o_header_t header;
-        ERL_NIF_TERM slist[req->headers.size];
-        size_t j;
-        for (j = 0; j < req->headers.size; j++) {
-            header = req->headers.entries[j];
-            buf = enif_make_new_binary(env, header.name->len, &key);
-            (void)memcpy(buf, header.name->base, header.name->len);
-            buf = enif_make_new_binary(env, header.value.len, &val);
-            (void)memcpy(buf, header.value.base, header.value.len);
-            slist[j] = enif_make_tuple2(env, key, val);
-        }
-        tmp = enif_make_list_from_array(env, slist, req->headers.size);
-        tuple[i++] = tmp;
-    }
-    /* host */
-    h2o_iovec_to_binary(req->hostconf->authority.host, &tmp);
-    tuple[i++] = tmp;
-    /* method */
-    h2o_iovec_to_binary(req->method, &tmp);
-    tuple[i++] = tmp;
-    /* multipart */
-    tuple[i++] = ATOM_undefined;
-    /* path */
-    h2o_iovec_to_binary(req->path, &tmp);
-    tuple[i++] = tmp;
-    /* peer */
-    {
-        ERL_NIF_TERM peer;
-        struct sockaddr_storage ss;
-        socklen_t sslen;
-        size_t remote_addr_len = SIZE_MAX;
-        char remote_addr[NI_MAXHOST];
-        peer = ATOM_undefined;
-        if ((sslen = req->conn->callbacks->get_peername(req->conn, (void *)&ss)) != 0) {
-            if ((remote_addr_len = h2o_socket_getnumerichost((void *)&ss, sslen, remote_addr)) != SIZE_MAX) {
-                peer = enif_make_tuple2(env, enif_make_string_len(env, remote_addr, remote_addr_len, ERL_NIF_LATIN1),
-                                        enif_make_long(env, h2o_socket_getport((void *)&ss)));
-            }
-        }
-        tuple[i++] = peer;
-    }
-    /* port */
-    tuple[i++] = enif_make_uint(env, req->hostconf->authority.port);
-    /* res */
-    {
-        ERL_NIF_TERM stuple[5];
-        size_t j;
-        j = 0;
-        /* record: h2o_res */
-        stuple[j++] = ATOM_h2o_res;
-        /* status */
-        stuple[j++] = enif_make_int(env, req->res.status);
-        /* reason */
-        if (req->res.reason == NULL) {
-            stuple[j++] = ATOM_undefined;
-        } else {
-            h2o_iovec_t reason = h2o_iovec_init(req->res.reason, strlen(req->res.reason));
-            h2o_iovec_to_binary(reason, &tmp);
-            stuple[j++] = tmp;
-        }
-        /* content_length */
-        stuple[j++] = (req->res.content_length == SIZE_MAX) ? ATOM_undefined : enif_make_ulong(env, req->res.content_length);
-        /* headers */
-        {
-            h2o_header_t header;
-            ERL_NIF_TERM slist[req->res.headers.size];
-            size_t k;
-            for (k = 0; k < req->res.headers.size; k++) {
-                header = req->res.headers.entries[k];
-                buf = enif_make_new_binary(env, header.name->len, &key);
-                (void)memcpy(buf, header.name->base, header.name->len);
-                buf = enif_make_new_binary(env, header.value.len, &val);
-                (void)memcpy(buf, header.value.base, header.value.len);
-                slist[k] = enif_make_tuple2(env, key, val);
-            }
-            tmp = enif_make_list_from_array(env, slist, req->headers.size);
-            stuple[j++] = tmp;
-        }
-        tuple[i++] = enif_make_tuple_from_array(env, stuple, j);
-    }
-    /* resp_body */
-    tuple[i++] = ATOM_undefined;
-    /* resp_cookies */
-    tuple[i++] = ATOM_undefined;
-    /* resp_headers */
-    tuple[i++] = ATOM_undefined;
-    /* scheme */
-    h2o_iovec_to_binary(req->scheme->name, &tmp);
-    tuple[i++] = tmp;
-    /* send_state */
-    tuple[i++] = ATOM_in_progress;
-    /* streamid */
-    tuple[i++] = (stream == NULL) ? ATOM_undefined : enif_make_ulong(env, stream->stream_id);
-    /* version */
-    tuple[i++] = h2o_req_version_to_atom(req);
-
-#undef h2o_iovec_to_binary
-
-    return enif_make_tuple_from_array(env, tuple, i);
-}
+#include "terms/filter_event.c.h"
 
 /* Port Functions */
 
-static ERL_NIF_TERM h2o_nif_filter_event_on_close(ErlNifEnv *env, h2o_nif_port_t *port, int is_direct_call);
+static ERL_NIF_TERM h2o_nif_filter_event_stop(ErlNifEnv *env, h2o_nif_port_t *port, int is_direct_call);
 static void h2o_nif_filter_event_dtor(ErlNifEnv *env, h2o_nif_port_t *port);
 
+static h2o_nif_port_init_t h2o_nif_filter_event_init = {
+    .type = H2O_NIF_PORT_TYPE_FILTER_EVENT, .stop = h2o_nif_filter_event_stop, .dtor = h2o_nif_filter_event_dtor,
+};
+
+static void on_rx_send(h2o_ostream_t *super, h2o_req_t *req, h2o_iovec_t *inbufs, size_t inbufcnt, h2o_send_state_t state);
+static void on_rx_fire(h2o_timeout_entry_t *timeout_entry);
+static void on_rx_stop(h2o_ostream_t *super, h2o_req_t *req);
+// static void on_rx_start_pull(h2o_ostream_t *super, h2o_ostream_pull_cb cb);
+static void on_tx_send(h2o_nif_ipc_receiver_t *receiver, h2o_linklist_t *messages);
+static void on_tx_stop(h2o_nif_ipc_receiver_t *receiver);
+
+static void on_request_work(h2o_nif_ipc_receiver_t *receiver, h2o_linklist_t *messages);
+static void on_request_stop(h2o_nif_ipc_receiver_t *receiver);
+
+static void on_sentinel_dtor(h2o_nif_port_t *port);
+
 int
-h2o_nif_filter_event_open(h2o_nif_filter_t *filter, h2o_req_t *req, h2o_ostream_t **slot, h2o_nif_filter_event_t **eventp)
+h2o_nif_filter_event_open(h2o_nif_filter_t *filter, h2o_req_t *req, h2o_ostream_t **slot, h2o_nif_filter_event_t **filter_eventp)
 {
     TRACE_F("h2o_nif_filter_event_open:%s:%d\n", __FILE__, __LINE__);
-    assert(eventp != NULL);
-    h2o_nif_filter_event_t *event = NULL;
-    if (!h2o_nif_port_open(&filter->super, sizeof(h2o_nif_filter_event_t), (h2o_nif_port_t **)&event)) {
-        *eventp = NULL;
+    assert(filter_eventp != NULL);
+    h2o_nif_filter_event_t *filter_event = NULL;
+    if (!h2o_nif_port_open(&filter->super, &h2o_nif_filter_event_init, sizeof(h2o_nif_filter_event_t),
+                           (h2o_nif_port_t **)&filter_event)) {
+        *filter_eventp = NULL;
         return 0;
     }
-    event->super.dtor = h2o_nif_filter_event_dtor;
-    event->super.type = H2O_NIF_PORT_TYPE_FILTER_EVENT;
-    event->_link.prev = event->_link.next = NULL;
-    event->req = req;
-    (void)atomic_init(&event->entity_offset, 0);
-    (void)ck_spinlock_init(&event->state.lock);
-    (void)atomic_init(&event->state.skip, 0);
-    (void)h2o_linklist_init_anchor(&event->state.input);
-    (void)atomic_init(&event->state.num_input, 0);
-    event->state.ready_input = (atomic_flag)ATOMIC_FLAG_INIT;
-    event->state.input_state = H2O_SEND_STATE_IN_PROGRESS;
-    (void)h2o_linklist_init_anchor(&event->state.output);
-    (void)atomic_init(&event->state.num_output, 0);
-    event->state.ready_output = (atomic_flag)ATOMIC_FLAG_INIT;
-    event->state.output_state = H2O_SEND_STATE_IN_PROGRESS;
-    (void)atomic_init(&event->state.output_batch, (uintptr_t)NULL);
-    event->super.on_close.callback = h2o_nif_filter_event_on_close;
-    h2o_nif_filter_ostream_t *ostream = (void *)h2o_add_ostream(req, sizeof(h2o_nif_filter_ostream_t), slot);
-    if (ostream == NULL) {
-        (void)h2o_nif_port_close(&event->super, NULL, NULL);
-        *eventp = NULL;
-        return 0;
-    }
-    ostream->super.do_send = on_send;
-    ostream->super.stop = on_stop;
-    slot = &ostream->super.next;
-    (void)h2o_nif_port_keep(&event->super);
-    (void)atomic_init(&ostream->event, (uintptr_t)event);
-    (void)atomic_init(&event->ostream, (uintptr_t)ostream);
+    (void)ck_spinlock_init(&filter_event->rx.lock);
+    (void)h2o_linklist_init_anchor(&filter_event->rx.queue);
+    filter_event->rx.size = 0;
+    filter_event->rx.state = H2O_SEND_STATE_IN_PROGRESS;
+    filter_event->rx.flag = (atomic_flag)ATOMIC_FLAG_INIT;
+    (void)ck_spinlock_init(&filter_event->tx.lock);
+    (void)h2o_linklist_init_anchor(&filter_event->tx.queue);
+    filter_event->tx.size = 0;
+    filter_event->tx.state = H2O_SEND_STATE_IN_PROGRESS;
+    filter_event->tx.flag = (atomic_flag)ATOMIC_FLAG_INIT;
+    filter_event->tx.message.link.prev = filter_event->tx.message.link.next = NULL;
+    (void)h2o_nif_ipc_link_ostream(&filter_event->ostream, req, slot, on_tx_send, on_tx_stop);
+    filter_event->ostream.super.do_send = on_rx_send;
+    filter_event->ostream.super.stop = on_rx_stop;
+    // filter_event.ostream.super.start_pull = on_rx_start_pull;
+    slot = &filter_event->ostream.super.next;
     (void)h2o_setup_next_ostream(req, slot);
-    (void)h2o_nif_port_keep(&event->super);
-    *eventp = event;
+    (void)h2o_nif_ipc_link_request(&filter_event->request, req, on_request_work, on_request_stop);
+    (void)h2o_nif_proto_req_init(&filter_event->super, &filter_event->proto);
+    assert(h2o_nif_port_sentinel_link(&req->pool, &filter_event->super, on_sentinel_dtor));
+    *filter_eventp = filter_event;
     return 1;
 }
 
 static ERL_NIF_TERM
-h2o_nif_filter_event_on_close(ErlNifEnv *env, h2o_nif_port_t *port, int is_direct_call)
+h2o_nif_filter_event_stop(ErlNifEnv *env, h2o_nif_port_t *port, int is_direct_call)
 {
-    TRACE_F("h2o_nif_filter_event_on_close:%s:%d\n", __FILE__, __LINE__);
+    TRACE_F("h2o_nif_filter_event_stop:%s:%d\n", __FILE__, __LINE__);
     assert(port->type == H2O_NIF_PORT_TYPE_FILTER_EVENT);
-    h2o_nif_filter_event_t *event = (h2o_nif_filter_event_t *)port;
+    // h2o_nif_filter_event_t *event = (h2o_nif_filter_event_t *)port;
     // h2o_nif_filter_ostream_t *ostream = (h2o_nif_filter_ostream_t *)atomic_exchange_explicit(&event->ostream, (uintptr_t)NULL,
     // memory_order_relaxed);
     // if (ostream != NULL) {
@@ -240,7 +87,7 @@ h2o_nif_filter_event_on_close(ErlNifEnv *env, h2o_nif_port_t *port, int is_direc
     // if (h2o_timeout_is_linked(&event->state.output_timeout)) {
     //     (void)h2o_timeout_unlink(&event->state.output_timeout);
     // }
-    (void)h2o_nif_port_release(&event->super);
+    // (void)h2o_nif_port_release(&event->super);
     return ATOM_ok;
 }
 
@@ -252,203 +99,286 @@ h2o_nif_filter_event_dtor(ErlNifEnv *env, h2o_nif_port_t *port)
     return;
 }
 
-/* Filter Functions */
+static void
+on_sentinel_dtor(h2o_nif_port_t *port)
+{
+    h2o_nif_port_state_t state = atomic_load_explicit(&port->state, memory_order_relaxed);
+    TRACE_F("on_sentinel_dtor:%s:%d ENTER flags=%d, async=%d\n", __FILE__, __LINE__, state.flags, state.async);
+    if (h2o_nif_port_is_finalized(port)) {
+        (void)h2o_nif_port_stop_quiet(port, NULL, NULL);
+    } else {
+        (void)h2o_nif_port_stop(port, NULL, NULL);
+    }
+    state = atomic_load_explicit(&port->state, memory_order_relaxed);
+    TRACE_F("on_sentinel_dtor:%s:%d EXIT flags=%d, async=%d\n", __FILE__, __LINE__, state.flags, state.async);
+}
+
+/* Filter Event Functions */
+
+int
+h2o_nif_filter_event_send(h2o_nif_filter_event_t *filter_event, h2o_iovec_t *bufs, size_t bufcnt, h2o_send_state_t state)
+{
+    TRACE_F("h2o_nif_filter_event_send:%s:%d\n", __FILE__, __LINE__);
+    if ((state == H2O_SEND_STATE_IN_PROGRESS && !h2o_nif_port_add_send_data(&filter_event->super)) ||
+        (state == H2O_SEND_STATE_FINAL && !h2o_nif_port_add_finalized(&filter_event->super))) {
+        TRACE_F("unable to add send_data or finalized: %d\n", state);
+        return 0;
+    }
+    if (!h2o_nif_port_sentinel_trylock(&filter_event->super)) {
+        TRACE_F("unable to lock the sentinel\n");
+        return 0;
+    }
+    h2o_req_t *req = filter_event->ostream.req;
+    // h2o_nif_filter_event_oentry_t *fo = (void *)mem_alloc(sizeof(h2o_nif_filter_event_oentry_t));
+    h2o_nif_filter_event_oentry_t *fo = (void *)h2o_mem_alloc_pool(&req->pool, sizeof(h2o_nif_filter_event_oentry_t));
+    void *p = NULL;
+    size_t buflen;
+    size_t i;
+    assert(fo != NULL);
+    fo->_link.prev = fo->_link.next = NULL;
+    fo->data.entries = NULL;
+    fo->data.size = 0;
+    fo->data.capacity = 0;
+    fo->state = state;
+    buflen = 0;
+    for (i = 0; i < bufcnt; ++i) {
+        buflen += bufs[i].len;
+    }
+    // DEBUG_F("event_send :: reserving %lu buffers\n", bufcnt);
+    (void)h2o_vector_reserve(&req->pool, &fo->data, bufcnt);
+    // DEBUG_F("event_send :: reserving %lu bytes\n", buflen);
+    p = h2o_mem_alloc_pool(&req->pool, buflen);
+    for (i = 0; i < bufcnt; ++i) {
+        fo->data.entries[i] = h2o_iovec_init(p, bufs[i].len);
+        p += bufs[i].len;
+        (void)memcpy(fo->data.entries[i].base, bufs[i].base, bufs[i].len);
+        fo->data.size++;
+    }
+    (void)ck_spinlock_lock_eb(&filter_event->tx.lock);
+    (void)h2o_linklist_insert(&filter_event->tx.queue, &fo->_link);
+    filter_event->tx.size++;
+    filter_event->tx.state = state;
+    (void)ck_spinlock_unlock(&filter_event->tx.lock);
+    (void)h2o_nif_port_sentinel_tryunlock(&filter_event->super);
+
+    // DEBUG_F("event_send :: filter_event->tx.size = %lu\n", filter_event->tx.size);
+    if (!atomic_flag_test_and_set_explicit(&filter_event->tx.flag, memory_order_relaxed)) {
+        assert(!h2o_linklist_is_linked(&filter_event->tx.message.link));
+        // TRACE_F("about to send: %d\n", state);
+        if (h2o_nif_ipc_send(&filter_event->ostream.receiver, &filter_event->tx.message)) {
+            return 1;
+        }
+    }
+    (void)h2o_nif_port_sub_requested(&filter_event->super);
+    return 1;
+}
+
+/* Output Stream Functions */
 
 static void
-on_send(h2o_ostream_t *super, h2o_req_t *req, h2o_iovec_t *inbufs, size_t inbufcnt, h2o_send_state_t state)
+on_rx_send(h2o_ostream_t *super, h2o_req_t *req, h2o_iovec_t *inbufs, size_t inbufcnt, h2o_send_state_t state)
 {
-    TRACE_F("on_send:%s:%d\n", __FILE__, __LINE__);
-
-    h2o_nif_filter_ostream_t *ostream = (h2o_nif_filter_ostream_t *)super;
-    h2o_nif_filter_event_t *event = (h2o_nif_filter_event_t *)atomic_load_explicit(&ostream->event, memory_order_relaxed);
+    TRACE_F("on_rx_send:%s:%d \"%.*s\"\n", __FILE__, __LINE__, (inbufcnt > 0) ? inbufs[0].len : 0, (inbufcnt > 0) ? inbufs[0].base : "");
+    h2o_nif_ipc_ostream_t *ostream = H2O_STRUCT_FROM_MEMBER(h2o_nif_ipc_ostream_t, super, super);
+    h2o_nif_filter_event_t *filter_event = H2O_STRUCT_FROM_MEMBER(h2o_nif_filter_event_t, ostream, ostream);
     size_t i;
     size_t inbuflen = 0;
-
-    if (atomic_load_explicit(&event->state.skip, memory_order_relaxed) == 1) {
-        (void)h2o_ostream_send_next(&ostream->super, req, inbufs, inbufcnt, state);
-        return;
-    }
-
+    h2o_nif_filter_event_ientry_t *fi = NULL;
+    unsigned char *buf = NULL;
     for (i = 0; i < inbufcnt; ++i) {
         inbuflen += inbufs[i].len;
     }
-
-    // TRACE_F("req->res.content_length = %lu\n", req->res.content_length);
-    // req->res.content_length = SIZE_MAX;
-
-    /* emit */
-    {
-        ErlNifBinary binary;
-        h2o_nif_filter_input_t *input = NULL;
-        unsigned char *buf = NULL;
-        if (!enif_alloc_binary(sizeof(h2o_nif_filter_input_t) + inbuflen, &binary)) {
-            perror("unable to allocate filter input binary");
-            abort();
-        }
-        input = (h2o_nif_filter_input_t *)binary.data;
-        input->_link.next = input->_link.prev = NULL;
-        input->binary = binary;
-        buf = binary.data + sizeof(h2o_nif_filter_input_t);
-        for (i = 0; i < inbufcnt; ++i) {
-            (void)memcpy(buf, inbufs[i].base, inbufs[i].len);
-            buf += inbufs[i].len;
-        }
-        (void)atomic_fetch_add_explicit(&event->state.num_input, 1, memory_order_relaxed);
-        (void)ck_spinlock_lock_eb(&event->state.lock);
-        (void)h2o_linklist_insert(&event->state.input, &input->_link);
-        event->state.input_state = state;
-        (void)ck_spinlock_unlock(&event->state.lock);
+    fi = (void *)mem_alloc(sizeof(h2o_nif_filter_event_ientry_t));
+    if (fi == NULL) {
+        perror("unable to allocate filter event (h2o_nif_filter_event_ientry_t)");
+        abort();
     }
-    if (!atomic_flag_test_and_set_explicit(&event->state.ready_input, memory_order_relaxed)) {
-        // __deferred_action_t action;
-        // (void)memset(&action, 0, sizeof(action));
-        // action.timeout.registered_at = 0;
-        // action.timeout.cb = on_ready_input_cb;
-        // action.timeout._link.next = action.timeout._link.prev = NULL;
-        // action.event = event;
-        // action.req = event->req;
-        // on_ready_input_cb(&action.timeout);
-        (void)create_deferred_action(event, req, on_ready_input_cb);
+    fi->_link.prev = fi->_link.next = NULL;
+    // DEBUG_F("enif_alloc_binary(%lu):%s:%d\n", inbuflen, __FILE__, __LINE__);
+    if (!enif_alloc_binary(inbuflen, &fi->binary)) {
+        perror("unable to allocate filter event (ErlNifBinary)");
+        abort();
     }
-    // if (state == H2O_SEND_STATE_FINAL) {
-    //     // __deferred_action_t action;
-    //     // (void)memset(&action, 0, sizeof(action));
-    //     // action.timeout.registered_at = 0;
-    //     // action.timeout.cb = on_final_input_cb;
-    //     // action.timeout._link.next = action.timeout._link.prev = NULL;
-    //     // action.event = event;
-    //     // action.req = event->req;
-    //     // on_final_input_cb(&action.timeout);
-    //     (void)create_deferred_action(event, req, on_final_input_cb);
-    // }
+    buf = fi->binary.data;
+    for (i = 0; i < inbufcnt; ++i) {
+        (void)memcpy(buf, inbufs[i].base, inbufs[i].len);
+        buf += inbufs[i].len;
+    }
+    (void)ck_spinlock_lock_eb(&filter_event->rx.lock);
+    (void)h2o_linklist_insert(&filter_event->rx.queue, &fi->_link);
+    filter_event->rx.size++;
+    filter_event->rx.state = state;
+    (void)ck_spinlock_unlock(&filter_event->rx.lock);
+    if (!atomic_flag_test_and_set_explicit(&filter_event->rx.flag, memory_order_relaxed)) {
+        TRACE_F("rx.flag set\n");
+        if (!h2o_nif_port_add_requested(&filter_event->super)) {
+            h2o_nif_port_state_t pstate = atomic_load_explicit(&filter_event->super.state, memory_order_relaxed);
+            TRACE_F("unable to add requested, state is currently: flags=%d, async=%d\n", pstate.flags, pstate.async);
+            return;
+        }
+        TRACE_F("enqueueing ready_input\n");
+        // assert(!h2o_linklist_is_linked(&filter_event->rx.message.link));
+        // (void)h2o_nif_ipc_send(&filter_event->ostream->receiver, &filter_event->tx.)
+        assert(!h2o_timeout_is_linked(&filter_event->rx.timeout_entry));
+        filter_event->rx.timeout_entry = (h2o_timeout_entry_t){0, on_rx_fire, {NULL, NULL}};
+        (void)h2o_timeout_link(req->conn->ctx->loop, &req->conn->ctx->zero_timeout, &filter_event->rx.timeout_entry);
+    } else {
+        TRACE_F("rx.flag is already set?\n");
+    }
 }
 
 static void
-on_stop(h2o_ostream_t *super, h2o_req_t *req)
+on_rx_fire(h2o_timeout_entry_t *timeout_entry)
 {
-    TRACE_F("on_stop:%s:%d\n", __FILE__, __LINE__);
-
-    h2o_nif_filter_ostream_t *ostream = (h2o_nif_filter_ostream_t *)super;
-    h2o_nif_filter_event_t *event =
-        (h2o_nif_filter_event_t *)atomic_exchange_explicit(&ostream->event, (uintptr_t)NULL, memory_order_relaxed);
-    if (event != NULL) {
-        if (h2o_timeout_is_linked(&event->state.output_timeout)) {
-            (void)h2o_timeout_unlink(&event->state.output_timeout);
-        }
-        (void)atomic_compare_exchange_weak_explicit(&event->ostream, (uintptr_t *)&ostream, (uintptr_t)NULL, memory_order_relaxed,
-                                                    memory_order_relaxed);
-        (void)h2o_nif_port_release(&event->super);
-    }
-}
-
-static __deferred_action_t *
-create_deferred_action(h2o_nif_filter_event_t *event, h2o_req_t *req, h2o_timeout_cb cb)
-{
-    TRACE_F("create_deferred_action:%s:%d\n", __FILE__, __LINE__);
-
-    __deferred_action_t *action = h2o_mem_alloc_shared(&req->pool, sizeof(*action), on_deferred_action_dispose);
-    (void)h2o_nif_port_keep(&event->super);
-    *action = (__deferred_action_t){{0, cb}, event, req};
-    (void)h2o_timeout_link(req->conn->ctx->loop, &req->conn->ctx->zero_timeout, &action->timeout);
-    return action;
-}
-
-static void
-on_deferred_action_dispose(void *_action)
-{
-    TRACE_F("on_deferred_action_dispose:%s:%d\n", __FILE__, __LINE__);
-
-    __deferred_action_t *action = _action;
-    if (h2o_timeout_is_linked(&action->timeout)) {
-        (void)h2o_timeout_unlink(&action->timeout);
-        (void)h2o_nif_port_release(&action->event->super);
-    }
-}
-
-static int send_em(ErlNifEnv *env, h2o_nif_filter_event_t *filter_event);
-
-static void
-on_ready_input_cb(h2o_timeout_entry_t *entry)
-{
-    TRACE_F("on_ready_input_cb:%s:%d\n", __FILE__, __LINE__);
-
-    __deferred_action_t *action = H2O_STRUCT_FROM_MEMBER(__deferred_action_t, timeout, entry);
-    h2o_nif_filter_event_t *event = action->event;
-    // h2o_nif_filter_t *filter = (h2o_nif_filter_t *)event->super.parent;
-    // h2o_nif_filter_ctx_t *ctx = (h2o_nif_filter_ctx_t *)atomic_load_explicit(&filter->ctx, memory_order_relaxed);
-    h2o_req_t *req = action->req;
-    // h2o_nif_filter_data_t *filter_data = h2o_context_get_filter_context(req->conn->ctx, &ctx->super);
-    // ErlNifEnv *env = filter_data->env;
+    TRACE_F("on_rx_fire:%s:%d\n", __FILE__, __LINE__);
+    h2o_nif_filter_event_t *filter_event = H2O_STRUCT_FROM_MEMBER(h2o_nif_filter_event_t, rx.timeout_entry, timeout_entry);
+    assert(!h2o_timeout_is_linked(&filter_event->rx.timeout_entry));
     ErlNifEnv *env = enif_alloc_env();
+    assert(env != NULL);
     ERL_NIF_TERM msg;
-    msg = enif_make_tuple3(env, ATOM_h2o_port_data, h2o_nif_port_make(env, &event->super), ATOM_ready_input);
-    if (!h2o_nif_port_send(NULL, &event->super, NULL, msg)) {
-        (void)atomic_flag_clear_explicit(&event->state.ready_input, memory_order_relaxed);
+    msg = enif_make_tuple3(env, ATOM_h2o_port_data, h2o_nif_port_make(env, &filter_event->super), ATOM_ready_input);
+    if (!h2o_nif_port_send(NULL, &filter_event->super, env, msg)) {
+        (void)atomic_flag_clear_explicit(&filter_event->rx.flag, memory_order_relaxed);
     }
-    (void)send_em(env, event);
-    if (event->state.input_state == H2O_SEND_STATE_FINAL) {
-        msg = enif_make_tuple3(env, ATOM_h2o_port_data, h2o_nif_port_make(env, &event->super), ATOM_final_input);
-        (void)h2o_nif_port_send(NULL, &event->super, NULL, msg);
+    (void)enif_clear_env(env);
+    if (filter_event->rx.state == H2O_SEND_STATE_FINAL) {
+        msg = enif_make_tuple3(env, ATOM_h2o_port_data, h2o_nif_port_make(env, &filter_event->super), ATOM_final_input);
+        (void)h2o_nif_port_send(NULL, &filter_event->super, env, msg);
     }
     (void)enif_free_env(env);
-    (void)h2o_nif_port_release(&event->super);
+    (void)h2o_nif_port_sub_requested(&filter_event->super);
 }
 
-static int
-send_em(ErlNifEnv *env, h2o_nif_filter_event_t *filter_event)
+static void
+on_rx_stop(h2o_ostream_t *super, h2o_req_t *req)
 {
-    h2o_req_t *req = filter_event->req;
-    ERL_NIF_TERM msg;
-
-    h2o_linklist_t input;
-    size_t num_input;
-    (void)atomic_flag_clear_explicit(&filter_event->state.ready_input, memory_order_relaxed);
-    (void)h2o_linklist_init_anchor(&input);
-    num_input = atomic_load_explicit(&filter_event->state.num_input, memory_order_relaxed);
-    (void)ck_spinlock_lock_eb(&filter_event->state.lock);
-    (void)h2o_linklist_insert_list(&input, &filter_event->state.input);
-    (void)ck_spinlock_unlock(&filter_event->state.lock);
-    if (h2o_linklist_is_empty(&input)) {
-        return 1;
-    }
-
-    ERL_NIF_TERM list;
-    ERL_NIF_TERM binary;
-    list = enif_make_list(env, 0);
-    h2o_linklist_t *anchor = &input;
-    h2o_linklist_t *node = anchor->prev;
-    h2o_nif_filter_input_t *ip = NULL;
-    unsigned long count = 0;
-    while (node != anchor) {
-        ip = H2O_STRUCT_FROM_MEMBER(h2o_nif_filter_input_t, _link, node);
-        binary = enif_make_binary(env, &ip->binary);
-        binary =
-            enif_make_sub_binary(env, binary, sizeof(h2o_nif_filter_input_t), ip->binary.size - sizeof(h2o_nif_filter_input_t));
-        list = enif_make_list_cell(env, binary, list);
-        node = node->prev;
-        count++;
-    }
-    (void)atomic_fetch_sub_explicit(&filter_event->state.num_input, count, memory_order_relaxed);
-    msg = enif_make_tuple3(env, ATOM_h2o_port_data, h2o_nif_port_make(env, &filter_event->super), list);
-    int retval = h2o_nif_port_send(NULL, &filter_event->super, NULL, msg);
-    (void)enif_clear_env(env);
-    return retval;
+    TRACE_F("on_rx_stop:%s:%d ENTER\n", __FILE__, __LINE__);
+    h2o_nif_ipc_ostream_t *ostream = H2O_STRUCT_FROM_MEMBER(h2o_nif_ipc_ostream_t, super, super);
+    h2o_nif_filter_event_t *filter_event = H2O_STRUCT_FROM_MEMBER(h2o_nif_filter_event_t, ostream, ostream);
+    // (void)h2o_nif_ipc_unlink_ostream()
+    (void)h2o_nif_port_stop(&filter_event->super, NULL, NULL);
+    TRACE_F("on_rx_stop:%s:%d EXIT\n", __FILE__, __LINE__);
 }
 
-// static void
-// on_final_input_cb(h2o_timeout_entry_t *entry)
-// {
-//     TRACE_F("on_final_input_cb:%s:%d\n", __FILE__, __LINE__);
+static void
+on_tx_send(h2o_nif_ipc_receiver_t *receiver, h2o_linklist_t *messages)
+{
+    // DEBUG_F("on_tx_send:%s:%d\n", __FILE__, __LINE__);
+    h2o_nif_filter_event_t *filter_event = H2O_STRUCT_FROM_MEMBER(h2o_nif_filter_event_t, ostream.receiver, receiver);
+    h2o_req_t *req = filter_event->ostream.req;
+    h2o_nif_ipc_message_t *message = NULL;
+    size_t cnt = 0;
 
-//     __deferred_action_t *action = H2O_STRUCT_FROM_MEMBER(__deferred_action_t, timeout, entry);
-//     h2o_nif_filter_event_t *event = action->event;
-//     h2o_nif_filter_t *filter = (h2o_nif_filter_t *)event->super.parent;
-//     h2o_nif_filter_ctx_t *ctx = (h2o_nif_filter_ctx_t *)atomic_load_explicit(&filter->ctx, memory_order_relaxed);
-//     h2o_req_t *req = action->req;
-//     h2o_nif_filter_data_t *filter_data = h2o_context_get_filter_context(req->conn->ctx, &ctx->super);
-//     ErlNifEnv *env = filter_data->env;
-//     ERL_NIF_TERM msg;
-//     msg = enif_make_tuple3(env, ATOM_h2o_port_data, h2o_nif_port_make(env, &event->super), ATOM_final_input);
-//     (void)h2o_nif_port_send(NULL, &event->super, env, msg);
-//     (void)enif_clear_env(env);
-// }
+    (void)atomic_flag_clear_explicit(&filter_event->tx.flag, memory_order_relaxed);
+
+    while (!h2o_linklist_is_empty(messages)) {
+        message = H2O_STRUCT_FROM_MEMBER(h2o_nif_ipc_message_t, link, messages->next);
+        (void)h2o_linklist_unlink(&message->link);
+        cnt++;
+    }
+    assert(cnt == 1);
+    
+    h2o_linklist_t queue;
+    size_t num_queue;
+    h2o_nif_filter_event_oentry_t *fo = NULL;
+    size_t bufcnt;
+    h2o_linklist_t *anchor = NULL;
+    h2o_linklist_t *node = NULL;
+    h2o_iovec_vector_t data;
+    h2o_send_state_t old_state;
+    h2o_send_state_t new_state;
+    size_t i;
+    size_t j;
+
+    (void)h2o_linklist_init_anchor(&queue);
+    (void)ck_spinlock_lock_eb(&filter_event->tx.lock);
+    (void)h2o_linklist_insert_list(&queue, &filter_event->tx.queue);
+    num_queue = filter_event->tx.size;
+    old_state = new_state = filter_event->tx.state;
+    (void)ck_spinlock_unlock(&filter_event->tx.lock);
+    if (h2o_linklist_is_empty(&queue) || !h2o_nif_port_sub_send_data(&filter_event->super)) {
+        DEBUG_F("unable to sub send data\n");
+        return;
+    }
+
+    // DEBUG_F("on_tx_send :: num_queue = %lu\n", num_queue);
+
+    anchor = &queue;
+    node = anchor->next;
+    bufcnt = 0;
+    while (node != anchor) {
+        fo = H2O_STRUCT_FROM_MEMBER(h2o_nif_filter_event_oentry_t, _link, node);
+        node = node->next;
+        bufcnt += fo->data.size;
+    }
+    data.entries = NULL;
+    data.size = 0;
+    data.capacity = 0;
+    (void)h2o_vector_reserve(&req->pool, &data, bufcnt);
+    // DEBUG_F("on_tx_send :: reserved %lu buffers\n", bufcnt);
+    i = 0;
+    while (!h2o_linklist_is_empty(&queue)) {
+        fo = H2O_STRUCT_FROM_MEMBER(h2o_nif_filter_event_oentry_t, _link, queue.next);
+        (void)h2o_linklist_unlink(&fo->_link);
+        for (j = 0; j < fo->data.size; ++j) {
+            data.entries[i] = fo->data.entries[j];
+            data.size++;
+            // sds mysds = sdsempty();
+            // mysds = sdscatrepr(mysds, data.entries[i].base, data.entries[i].len);
+            // DEBUG_F("on_tx_send :: fo->data.entries[%d] = \"%.*s\"\n", i, fo->data.entries[i].len, fo->data.entries[i].base);
+            // DEBUG_F("on_tx_send :: data.entries[%d] = \"%.*s\"\n", i, data.entries[i].len, data.entries[i].base);
+            // DEBUG_F("on_tx_send :: data.entries[%d] = %.*s\n", i, sdslen(mysds), mysds);
+            // (void)sdsfree(mysds);
+            i++;
+        }
+        new_state = fo->state;
+        // (void)mem_free(fo);
+    }
+
+    (void)ck_spinlock_lock_eb(&filter_event->tx.lock);
+    filter_event->tx.size -= num_queue;
+    filter_event->tx.state = new_state;
+    (void)ck_spinlock_unlock(&filter_event->tx.lock);
+
+    // if (data.size > 0) {
+    //     sds mysds = sdsempty();
+    //     mysds = sdscatrepr(mysds, data.entries[0].base, data.entries[0].len);
+    //     // DEBUG_F("h2o_ostream_send_next: \"%.*s\" (%d)\n", data.entries[0].len, data.entries[0].base, new_state);
+    //     // DEBUG_F("h2o_ostream_send_next: %.*s (%d)\n", sdslen(mysds), mysds, new_state);
+    //     (void)sdsfree(mysds);
+    // }
+    (void)h2o_ostream_send_next(&filter_event->ostream.super, req, data.entries, data.size, new_state);
+
+    // if (req->_generator == NULL) {
+    //     static h2o_generator_t generator = {NULL, NULL};
+    //     (void)h2o_start_response(req, &generator);
+    // }
+
+    // (void)h2o_send(req, bufs, bufcnt, new_state);
+}
+
+static void
+on_tx_stop(h2o_nif_ipc_receiver_t *receiver)
+{
+    TRACE_F("on_tx_stop:%s:%d\n", __FILE__, __LINE__);
+}
+
+/* Request Functions */
+
+static void
+on_request_work(h2o_nif_ipc_receiver_t *receiver, h2o_linklist_t *messages)
+{
+    TRACE_F("on_request_work:%s:%d\n", __FILE__, __LINE__);
+    h2o_nif_ipc_job_t *job = NULL;
+    while (!h2o_linklist_is_empty(messages)) {
+        job = H2O_STRUCT_FROM_MEMBER(h2o_nif_ipc_job_t, super.link, messages->next);
+        (void)h2o_linklist_unlink(&job->super.link);
+        job->cb(receiver, job);
+    }
+}
+
+static void
+on_request_stop(h2o_nif_ipc_receiver_t *receiver)
+{
+    TRACE_F("on_request_stop:%s:%d\n", __FILE__, __LINE__);
+}

@@ -79,11 +79,11 @@ h2o_nif_slice_dtor(ErlNifEnv *env, void *obj)
     (void)h2o_mem_clear_pool(&slice->pool);
     // if (slice->pool != NULL) {
     //     (void)h2o_mem_clear_pool(slice->pool);
-    //     (void)enif_free(slice->pool);
+    //     (void)mem_free(slice->pool);
     //     slice->pool = NULL;
     // }
     // if (slice->data != NULL) {
-    //     (void)enif_free(slice->data);
+    //     (void)mem_free(slice->data);
     //     slice->data = NULL;
     // }
     return;

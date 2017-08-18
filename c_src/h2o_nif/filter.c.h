@@ -18,8 +18,8 @@ h2o_nif_filter_read_start_1(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     if (h2o_nif_port_is_closed(&filter->super)) {
         return enif_make_tuple2(env, ATOM_error, ATOM_closed);
     }
-    if (!atomic_flag_test_and_set_explicit(&filter->state, memory_order_relaxed)) {
-        (void)atomic_flag_clear_explicit(&filter->state, memory_order_relaxed);
+    if (!atomic_flag_test_and_set_explicit(&filter->events.ready_input, memory_order_relaxed)) {
+        (void)atomic_flag_clear_explicit(&filter->events.ready_input, memory_order_relaxed);
         return ATOM_ok;
     } else {
         ERL_NIF_TERM msg;
@@ -45,13 +45,13 @@ h2o_nif_filter_read_1(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
         return enif_make_tuple2(env, ATOM_error, ATOM_closed);
     }
     h2o_linklist_t events;
-    unsigned long num_events;
-    (void)atomic_flag_clear_explicit(&filter->state, memory_order_relaxed);
+    size_t num_events;
     (void)h2o_linklist_init_anchor(&events);
-    num_events = atomic_load_explicit(&filter->num_events, memory_order_relaxed);
-    (void)ck_spinlock_lock_eb(&filter->spinlock);
-    (void)h2o_linklist_insert_list(&events, &filter->events);
-    (void)ck_spinlock_unlock(&filter->spinlock);
+    (void)atomic_flag_clear_explicit(&filter->events.ready_input, memory_order_relaxed);
+    num_events = atomic_load_explicit(&filter->events.size, memory_order_relaxed);
+    (void)ck_spinlock_lock_eb(&filter->events.lock);
+    (void)h2o_linklist_insert_list(&events, &filter->events.input);
+    (void)ck_spinlock_unlock(&filter->events.lock);
     if (h2o_linklist_is_empty(&events)) {
         return enif_make_list(env, 0);
     }
@@ -61,15 +61,15 @@ h2o_nif_filter_read_1(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
         list = enif_make_list(env, 0);
         h2o_linklist_t *anchor = &events;
         h2o_linklist_t *node = anchor->prev;
-        h2o_nif_filter_event_t *event = NULL;
-        unsigned long count = 0;
+        h2o_nif_filter_event_t *filter_event = NULL;
+        size_t count = 0;
         while (node != anchor) {
-            event = H2O_STRUCT_FROM_MEMBER(h2o_nif_filter_event_t, _link, node);
-            list = enif_make_list_cell(env, h2o_nif_filter_event_make(env, event), list);
+            filter_event = H2O_STRUCT_FROM_MEMBER(h2o_nif_filter_event_t, _link, node);
+            list = enif_make_list_cell(env, h2o_nif_filter_event_make(env, filter_event), list);
             node = node->prev;
             count++;
         }
-        (void)atomic_fetch_sub_explicit(&filter->num_events, count, memory_order_relaxed);
+        (void)atomic_fetch_sub_explicit(&filter->events.size, count, memory_order_relaxed);
         return list;
     }
 
@@ -91,14 +91,14 @@ h2o_nif_filter_read_1_reduce(ErlNifEnv *env, h2o_nif_slicelist_t *slicelist, ERL
     /* final reduction */
     if (node == NULL) {
         h2o_nif_filter_t *filter = (void *)slicelist->data;
-        (void)atomic_fetch_sub_explicit(&filter->num_events, slicelist->count, memory_order_relaxed);
+        (void)atomic_fetch_sub_explicit(&filter->events.size, slicelist->count, memory_order_relaxed);
         (void)h2o_nif_port_release(&filter->super);
         return list;
     }
 
     /* intermediate reduction */
-    h2o_nif_filter_event_t *event = NULL;
-    event = H2O_STRUCT_FROM_MEMBER(h2o_nif_filter_event_t, _link, node);
-    list = enif_make_list_cell(env, h2o_nif_filter_event_make(env, event), list);
+    h2o_nif_filter_event_t *filter_event = NULL;
+    filter_event = H2O_STRUCT_FROM_MEMBER(h2o_nif_filter_event_t, _link, node);
+    list = enif_make_list_cell(env, h2o_nif_filter_event_make(env, filter_event), list);
     return list;
 }

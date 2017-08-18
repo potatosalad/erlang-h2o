@@ -5,8 +5,8 @@
 #define H2O_NIF_BATCH_H
 
 #include "globals.h"
-#include "ipc.h"
-#include "handler.h"
+// #include "ipc.h"
+// #include "handler.h"
 
 #define H2O_NIF_BATCH_MAX_ARITY 4
 
@@ -18,7 +18,7 @@ typedef struct h2o_nif_batch_req_s h2o_nif_batch_req_t;
 typedef struct h2o_nif_batch_ctx_s h2o_nif_batch_ctx_t;
 // typedef int h2o_nif_batch_test_cb_t(h2o_nif_batch_ctx_t *ctx, ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]);
 typedef int h2o_nif_batch_req_cb_t(h2o_nif_batch_ctx_t *ctx, ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]);
-typedef struct h2o_nif_ipc_batch_req_s h2o_nif_ipc_batch_req_t;
+// typedef struct h2o_nif_ipc_batch_req_s h2o_nif_ipc_batch_req_t;
 
 struct h2o_nif_batch_fun_s {
     h2o_nif_batch_req_cb_t *test;
@@ -52,14 +52,14 @@ struct h2o_nif_batch_ctx_s {
     h2o_nif_batch_req_t *req;
 };
 
-struct h2o_nif_ipc_batch_req_s {
-    h2o_nif_ipc_message_t super;
-    h2o_nif_batch_t *batch;
-    h2o_nif_batch_req_t *req;
-    union {
-        h2o_nif_handler_event_t *handler_event;
-    } data;
-};
+// struct h2o_nif_ipc_batch_req_s {
+//     h2o_nif_ipc_message_t super;
+//     h2o_nif_batch_t *batch;
+//     h2o_nif_batch_req_t *req;
+//     union {
+//         h2o_nif_handler_event_t *handler_event;
+//     } data;
+// };
 
 /* Variables */
 
@@ -115,20 +115,21 @@ h2o_nif_batch_release(h2o_nif_batch_t *batch)
 extern ERL_NIF_TERM h2o_nif_batch_process(h2o_nif_batch_t *batch, ErlNifEnv *env, ERL_NIF_TERM *listp);
 extern ERL_NIF_TERM h2o_nif_batch_execute(h2o_nif_batch_t *batch, ErlNifEnv *env);
 extern ERL_NIF_TERM h2o_nif_batch_resolve(h2o_nif_batch_t *batch, ErlNifEnv *env);
-static int h2o_nif_ipc_batch_handler_event(h2o_nif_handler_event_t *handler_event, h2o_nif_batch_t *batch, h2o_nif_batch_req_t *req,
-                                           h2o_nif_ipc_callback_t *cb);
+// static int h2o_nif_ipc_batch_handler_event(h2o_nif_handler_event_t *handler_event, h2o_nif_batch_t *batch, h2o_nif_batch_req_t
+// *req,
+//                                            h2o_nif_ipc_callback_t *cb);
 
-inline int
-h2o_nif_ipc_batch_handler_event(h2o_nif_handler_event_t *handler_event, h2o_nif_batch_t *batch, h2o_nif_batch_req_t *req,
-                                h2o_nif_ipc_callback_t *cb)
-{
-    h2o_nif_ipc_batch_req_t *message = (void *)h2o_nif_ipc_create_message(sizeof(*message), cb, NULL);
-    h2o_nif_srv_thread_ctx_t *ctx = (h2o_nif_srv_thread_ctx_t *)handler_event->req->conn->ctx;
-    (void)atomic_fetch_add_explicit(&req->refc, 1, memory_order_relaxed);
-    message->batch = batch;
-    message->req = req;
-    message->data.handler_event = handler_event;
-    return h2o_nif_ipc_enqueue(ctx->thread->ipc_queue, (h2o_nif_ipc_message_t *)message);
-}
+// inline int
+// h2o_nif_ipc_batch_handler_event(h2o_nif_handler_event_t *handler_event, h2o_nif_batch_t *batch, h2o_nif_batch_req_t *req,
+//                                 h2o_nif_ipc_callback_t *cb)
+// {
+//     h2o_nif_ipc_batch_req_t *message = (void *)h2o_nif_ipc_create_message(sizeof(*message), cb, NULL);
+//     h2o_nif_srv_thread_ctx_t *ctx = (h2o_nif_srv_thread_ctx_t *)handler_event->req->conn->ctx;
+//     (void)atomic_fetch_add_explicit(&req->refc, 1, memory_order_relaxed);
+//     message->batch = batch;
+//     message->req = req;
+//     message->data.handler_event = handler_event;
+//     return h2o_nif_ipc_enqueue(ctx->thread->ipc_queue, (h2o_nif_ipc_message_t *)message);
+// }
 
 #endif

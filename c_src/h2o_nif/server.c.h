@@ -8,14 +8,17 @@
 static ERL_NIF_TERM
 h2o_nif_server_open_0(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
+    TRACE_F("h2o_nif_server_open_0:%s:%d\n", __FILE__, __LINE__);
     h2o_nif_server_t *server = NULL;
     if (argc != 0 || !h2o_nif_server_open(&server)) {
         return enif_make_badarg(env);
     }
     ErlNifPid owner;
     (void)enif_self(env, &owner);
-    (void)h2o_nif_port_set_owner(&server->super, owner);
-    assert(h2o_nif_port_set_open(&server->super));
+    if (!h2o_nif_port_connect(&server->super, env, owner) || !h2o_nif_port_set_open(&server->super)) {
+        (void)h2o_nif_port_stop_quiet(&server->super, NULL, NULL);
+        return enif_make_badarg(env);
+    }
     ERL_NIF_TERM out;
     out = h2o_nif_port_make(env, &server->super);
     return out;

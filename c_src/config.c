@@ -1,6 +1,11 @@
 // -*- mode: c; tab-width: 4; indent-tabs-mode: nil; st-rulers: [132] -*-
 // vim: ts=4 sw=4 ft=c et
 
+#if defined(__sun) && defined(__SVR4)
+#define __EXTENSIONS__ 1
+#define _POSIX_C_SOURCE 200809L
+#endif
+
 #include <arpa/inet.h>
 #include <assert.h>
 #include <errno.h>
@@ -16,6 +21,8 @@
 #include <signal.h>
 #include <spawn.h>
 #include <stdio.h>
+#include <string.h>
+#include <strings.h>
 #include <unistd.h>
 #include <sys/resource.h>
 #include <sys/stat.h>
@@ -43,7 +50,7 @@
 // #include "standalone.h"
 
 #include "filter.h"
-#include "handler.h"
+// #include "handler.h"
 #include "logger.h"
 
 #ifdef TCP_FASTOPEN
@@ -64,15 +71,15 @@ struct h2o_nif_filter_configurator_s {
     h2o_nif_filter_handle_vector_t _handles_stack[H2O_CONFIGURATOR_NUM_LEVELS + 1];
 };
 
-typedef struct h2o_nif_handler_configurator_s h2o_nif_handler_configurator_t;
+// typedef struct h2o_nif_handler_configurator_s h2o_nif_handler_configurator_t;
 
-typedef H2O_VECTOR(h2o_nif_handler_handle_t *) h2o_nif_handler_handle_vector_t;
+// typedef H2O_VECTOR(h2o_nif_handler_handle_t *) h2o_nif_handler_handle_vector_t;
 
-struct h2o_nif_handler_configurator_s {
-    h2o_configurator_t super;
-    h2o_nif_handler_handle_vector_t *handles;
-    h2o_nif_handler_handle_vector_t _handles_stack[H2O_CONFIGURATOR_NUM_LEVELS + 1];
-};
+// struct h2o_nif_handler_configurator_s {
+//     h2o_configurator_t super;
+//     h2o_nif_handler_handle_vector_t *handles;
+//     h2o_nif_handler_handle_vector_t _handles_stack[H2O_CONFIGURATOR_NUM_LEVELS + 1];
+// };
 
 typedef struct h2o_nif_logger_configurator_s h2o_nif_logger_configurator_t;
 
@@ -91,10 +98,10 @@ static int on_config_erlang_filter(h2o_configurator_command_t *cmd, h2o_configur
 static void on_config_erlang_filter_dispose_handle(void *_fh);
 static int on_config_erlang_filter_enter(h2o_configurator_t *super, h2o_configurator_context_t *ctx, yoml_t *node);
 static int on_config_erlang_filter_exit(h2o_configurator_t *super, h2o_configurator_context_t *ctx, yoml_t *node);
-static int on_config_erlang_handler(h2o_configurator_command_t *cmd, h2o_configurator_context_t *ctx, yoml_t *node);
-static void on_config_erlang_handler_dispose_handle(void *_hh);
-static int on_config_erlang_handler_enter(h2o_configurator_t *super, h2o_configurator_context_t *ctx, yoml_t *node);
-static int on_config_erlang_handler_exit(h2o_configurator_t *super, h2o_configurator_context_t *ctx, yoml_t *node);
+// static int on_config_erlang_handler(h2o_configurator_command_t *cmd, h2o_configurator_context_t *ctx, yoml_t *node);
+// static void on_config_erlang_handler_dispose_handle(void *_hh);
+// static int on_config_erlang_handler_enter(h2o_configurator_t *super, h2o_configurator_context_t *ctx, yoml_t *node);
+// static int on_config_erlang_handler_exit(h2o_configurator_t *super, h2o_configurator_context_t *ctx, yoml_t *node);
 static int on_config_erlang_logger(h2o_configurator_command_t *cmd, h2o_configurator_context_t *ctx, yoml_t *node);
 static void on_config_erlang_logger_dispose_handle(void *_lh);
 static int on_config_erlang_logger_enter(h2o_configurator_t *super, h2o_configurator_context_t *ctx, yoml_t *node);
@@ -176,17 +183,17 @@ h2o_nif_config_init(h2o_nif_config_t *config)
         (void)h2o_configurator_define_command(&c->super, "erlang.filter", H2O_CONFIGURATOR_FLAG_ALL_LEVELS,
                                               on_config_erlang_filter);
     }
-    {
-        h2o_nif_handler_configurator_t *c =
-            (h2o_nif_handler_configurator_t *)h2o_configurator_create(&config->globalconf, sizeof(*c));
-        c->super.enter = on_config_erlang_handler_enter;
-        c->super.exit = on_config_erlang_handler_exit;
-        c->handles = c->_handles_stack;
-        (void)h2o_configurator_define_command(&c->super, "erlang.handler",
-                                              H2O_CONFIGURATOR_FLAG_PATH | H2O_CONFIGURATOR_FLAG_DEFERRED |
-                                                  H2O_CONFIGURATOR_FLAG_EXPECT_SCALAR,
-                                              on_config_erlang_handler);
-    }
+    // {
+    //     h2o_nif_handler_configurator_t *c =
+    //         (h2o_nif_handler_configurator_t *)h2o_configurator_create(&config->globalconf, sizeof(*c));
+    //     c->super.enter = on_config_erlang_handler_enter;
+    //     c->super.exit = on_config_erlang_handler_exit;
+    //     c->handles = c->_handles_stack;
+    //     (void)h2o_configurator_define_command(&c->super, "erlang.handler",
+    //                                           H2O_CONFIGURATOR_FLAG_PATH | H2O_CONFIGURATOR_FLAG_DEFERRED |
+    //                                               H2O_CONFIGURATOR_FLAG_EXPECT_SCALAR,
+    //                                           on_config_erlang_handler);
+    // }
     {
         h2o_nif_logger_configurator_t *c =
             (h2o_nif_logger_configurator_t *)h2o_configurator_create(&config->globalconf, sizeof(*c));
@@ -438,103 +445,103 @@ on_config_erlang_filter_exit(h2o_configurator_t *super, h2o_configurator_context
 
 /* BEGIN: erlang.handler */
 
-static int
-on_config_erlang_handler(h2o_configurator_command_t *cmd, h2o_configurator_context_t *ctx, yoml_t *node)
-{
-    TRACE_F("on_config_erlang_handler:%s:%d\n", __FILE__, __LINE__);
+// static int
+// on_config_erlang_handler(h2o_configurator_command_t *cmd, h2o_configurator_context_t *ctx, yoml_t *node)
+// {
+//     TRACE_F("on_config_erlang_handler:%s:%d\n", __FILE__, __LINE__);
 
-    h2o_nif_handler_configurator_t *c = (h2o_nif_handler_configurator_t *)cmd->configurator;
-    h2o_nif_config_t *config = (h2o_nif_config_t *)ctx->globalconf;
-    h2o_iovec_t reference_iov;
-    ERL_NIF_TERM reference_term;
-    /* get reference */
-    if (node->type != YOML_TYPE_SCALAR) {
-        (void)h2o_configurator_errprintf(cmd, node, "`erlang.handler` must be a scalar");
-        return -1;
-    }
-    reference_iov = h2o_decode_base64url(NULL, node->data.scalar, strlen(node->data.scalar));
-    if (reference_iov.base == NULL) {
-        (void)h2o_configurator_errprintf(cmd, node, "`erlang.handler` has invalid Base64URL encoding");
-        return -1;
-    }
-    if (!enif_binary_to_term(config->env, (const unsigned char *)reference_iov.base, reference_iov.len, &reference_term,
-                             ERL_NIF_BIN2TERM_SAFE)) {
-        (void)h2o_configurator_errprintf(cmd, node, "`erlang.handler` must be an erlang reference");
-        (void)free(reference_iov.base);
-        return -1;
-    }
-    if (!enif_is_ref(config->env, reference_term)) {
-        (void)h2o_configurator_errprintf(cmd, node, "`erlang.handler` must be an erlang reference");
-        (void)free(reference_iov.base);
-        return -1;
-    }
-    (void)free(reference_iov.base);
-    /* create handler handle */
-    h2o_nif_handler_handle_t *hh = h2o_mem_alloc_shared(NULL, sizeof(*hh), on_config_erlang_handler_dispose_handle);
-    if (hh == NULL) {
-        return -1;
-    }
-    hh->reference = reference_term;
-    (void)h2o_vector_reserve(NULL, c->handles, c->handles->size + 1);
-    c->handles->entries[c->handles->size++] = hh;
+//     h2o_nif_handler_configurator_t *c = (h2o_nif_handler_configurator_t *)cmd->configurator;
+//     h2o_nif_config_t *config = (h2o_nif_config_t *)ctx->globalconf;
+//     h2o_iovec_t reference_iov;
+//     ERL_NIF_TERM reference_term;
+//     /* get reference */
+//     if (node->type != YOML_TYPE_SCALAR) {
+//         (void)h2o_configurator_errprintf(cmd, node, "`erlang.handler` must be a scalar");
+//         return -1;
+//     }
+//     reference_iov = h2o_decode_base64url(NULL, node->data.scalar, strlen(node->data.scalar));
+//     if (reference_iov.base == NULL) {
+//         (void)h2o_configurator_errprintf(cmd, node, "`erlang.handler` has invalid Base64URL encoding");
+//         return -1;
+//     }
+//     if (!enif_binary_to_term(config->env, (const unsigned char *)reference_iov.base, reference_iov.len, &reference_term,
+//                              ERL_NIF_BIN2TERM_SAFE)) {
+//         (void)h2o_configurator_errprintf(cmd, node, "`erlang.handler` must be an erlang reference");
+//         (void)free(reference_iov.base);
+//         return -1;
+//     }
+//     if (!enif_is_ref(config->env, reference_term)) {
+//         (void)h2o_configurator_errprintf(cmd, node, "`erlang.handler` must be an erlang reference");
+//         (void)free(reference_iov.base);
+//         return -1;
+//     }
+//     (void)free(reference_iov.base);
+//     /* create handler handle */
+//     h2o_nif_handler_handle_t *hh = h2o_mem_alloc_shared(NULL, sizeof(*hh), on_config_erlang_handler_dispose_handle);
+//     if (hh == NULL) {
+//         return -1;
+//     }
+//     hh->reference = reference_term;
+//     (void)h2o_vector_reserve(NULL, c->handles, c->handles->size + 1);
+//     c->handles->entries[c->handles->size++] = hh;
 
-    return 0;
-}
+//     return 0;
+// }
 
-static void
-on_config_erlang_handler_dispose_handle(void *_hh)
-{
-    TRACE_F("on_config_erlang_handler_dispose_handle:%s:%d\n", __FILE__, __LINE__);
-    // h2o_nif_handler_handle_t *hh = _hh;
-}
+// static void
+// on_config_erlang_handler_dispose_handle(void *_hh)
+// {
+//     TRACE_F("on_config_erlang_handler_dispose_handle:%s:%d\n", __FILE__, __LINE__);
+//     // h2o_nif_handler_handle_t *hh = _hh;
+// }
 
-static int
-on_config_erlang_handler_enter(h2o_configurator_t *super, h2o_configurator_context_t *ctx, yoml_t *node)
-{
-    TRACE_F("on_config_erlang_handler_enter:%s:%d\n", __FILE__, __LINE__);
-    h2o_nif_handler_configurator_t *c = (h2o_nif_handler_configurator_t *)super;
-    size_t i;
+// static int
+// on_config_erlang_handler_enter(h2o_configurator_t *super, h2o_configurator_context_t *ctx, yoml_t *node)
+// {
+//     TRACE_F("on_config_erlang_handler_enter:%s:%d\n", __FILE__, __LINE__);
+//     h2o_nif_handler_configurator_t *c = (h2o_nif_handler_configurator_t *)super;
+//     size_t i;
 
-    /* push the stack pointer */
-    ++c->handles;
+//     /* push the stack pointer */
+//     ++c->handles;
 
-    /* link the handles */
-    (void)memset(c->handles, 0, sizeof(*c->handles));
-    (void)h2o_vector_reserve(NULL, c->handles, c->handles[-1].size + 1);
-    for (i = 0; i != c->handles[-1].size; ++i) {
-        h2o_nif_handler_handle_t *hh = c->handles[-1].entries[i];
-        c->handles[0].entries[c->handles[0].size++] = hh;
-        (void)h2o_mem_addref_shared(hh);
-    }
+//     /* link the handles */
+//     (void)memset(c->handles, 0, sizeof(*c->handles));
+//     (void)h2o_vector_reserve(NULL, c->handles, c->handles[-1].size + 1);
+//     for (i = 0; i != c->handles[-1].size; ++i) {
+//         h2o_nif_handler_handle_t *hh = c->handles[-1].entries[i];
+//         c->handles[0].entries[c->handles[0].size++] = hh;
+//         (void)h2o_mem_addref_shared(hh);
+//     }
 
-    return 0;
-}
+//     return 0;
+// }
 
-static int
-on_config_erlang_handler_exit(h2o_configurator_t *super, h2o_configurator_context_t *ctx, yoml_t *node)
-{
-    TRACE_F("on_config_erlang_handler_exit:%s:%d\n", __FILE__, __LINE__);
-    h2o_nif_handler_configurator_t *c = (h2o_nif_handler_configurator_t *)super;
-    h2o_nif_config_t *config = (h2o_nif_config_t *)ctx->globalconf;
-    h2o_nif_server_t *server = H2O_STRUCT_FROM_MEMBER(h2o_nif_server_t, config, config);
-    size_t i;
+// static int
+// on_config_erlang_handler_exit(h2o_configurator_t *super, h2o_configurator_context_t *ctx, yoml_t *node)
+// {
+//     TRACE_F("on_config_erlang_handler_exit:%s:%d\n", __FILE__, __LINE__);
+//     h2o_nif_handler_configurator_t *c = (h2o_nif_handler_configurator_t *)super;
+//     h2o_nif_config_t *config = (h2o_nif_config_t *)ctx->globalconf;
+//     h2o_nif_server_t *server = H2O_STRUCT_FROM_MEMBER(h2o_nif_server_t, config, config);
+//     size_t i;
 
-    /* register all handles, and decref them */
-    for (i = 0; i != c->handles->size; ++i) {
-        h2o_nif_handler_handle_t *hh = c->handles->entries[i];
-        if (ctx->pathconf != NULL) {
-            (void)h2o_nif_handler_register(config->env, server, ctx->pathconf, hh);
-        }
-        (void)h2o_mem_release_shared(hh);
-    }
-    /* free the vector */
-    (void)free(c->handles->entries);
+//     /* register all handles, and decref them */
+//     for (i = 0; i != c->handles->size; ++i) {
+//         h2o_nif_handler_handle_t *hh = c->handles->entries[i];
+//         if (ctx->pathconf != NULL) {
+//             (void)h2o_nif_handler_register(config->env, server, ctx->pathconf, hh);
+//         }
+//         (void)h2o_mem_release_shared(hh);
+//     }
+//     /* free the vector */
+//     (void)free(c->handles->entries);
 
-    /* pop the stack pointer */
-    --c->handles;
+//     /* pop the stack pointer */
+//     --c->handles;
 
-    return 0;
-}
+//     return 0;
+// }
 
 /* END: erlang.handler */
 
@@ -748,8 +755,10 @@ on_config_listen(h2o_configurator_command_t *cmd, h2o_configurator_context_t *ct
             }
             type = t->data.scalar;
         }
-        if ((t = yoml_get(node, "ssl")) != NULL)
+        if ((t = yoml_get(node, "ssl")) != NULL) {
             ssl_node = t;
+            (void)ssl_node;
+        }
         if ((t = yoml_get(node, "proxy-protocol")) != NULL) {
             if (t->type != YOML_TYPE_SCALAR) {
                 (void)h2o_configurator_errprintf(cmd, node, "`proxy-protocol` must be a string");
@@ -775,7 +784,6 @@ on_config_listen(h2o_configurator_command_t *cmd, h2o_configurator_context_t *ct
 
         /* unix socket */
         struct sockaddr_un sa;
-        int listener_is_new;
         h2o_nif_cfg_listen_t *listener;
         /* build sockaddr */
         (void)memset(&sa, 0, sizeof(sa));
@@ -786,13 +794,13 @@ on_config_listen(h2o_configurator_command_t *cmd, h2o_configurator_context_t *ct
         sa.sun_family = AF_UNIX;
         (void)strcpy(sa.sun_path, servname);
         /* find existing listener or create a new one */
-        listener_is_new = 0;
+        // int listener_is_new = 0;
         if ((listener = find_listener(config, (void *)&sa, sizeof(sa))) == NULL) {
             int fd = -1;
             if ((fd = open_unix_listener(cmd, ctx, node, &sa)) == -1)
                 return -1;
             listener = add_listener(config, fd, (struct sockaddr *)&sa, sizeof(sa), ctx->hostconf == NULL, proxy_protocol);
-            listener_is_new = 1;
+            // listener_is_new = 1;
         } else if (listener->proxy_protocol != proxy_protocol) {
             goto ProxyConflict;
         }
@@ -824,7 +832,7 @@ on_config_listen(h2o_configurator_command_t *cmd, h2o_configurator_context_t *ct
         /* listen to the returned addresses */
         for (ai = res; ai != NULL; ai = ai->ai_next) {
             h2o_nif_cfg_listen_t *listener = find_listener(config, ai->ai_addr, ai->ai_addrlen);
-            int listener_is_new = 0;
+            // int listener_is_new = 0;
             if (listener == NULL) {
                 int fd = -1;
                 if ((fd = open_tcp_listener(cmd, ctx, node, hostname, servname, ai->ai_family, ai->ai_socktype, ai->ai_protocol,
@@ -833,7 +841,7 @@ on_config_listen(h2o_configurator_command_t *cmd, h2o_configurator_context_t *ct
                     return -1;
                 }
                 listener = add_listener(config, fd, ai->ai_addr, ai->ai_addrlen, ctx->hostconf == NULL, proxy_protocol);
-                listener_is_new = 1;
+                // listener_is_new = 1;
             } else if (listener->proxy_protocol != proxy_protocol) {
                 (void)freeaddrinfo(res);
                 goto ProxyConflict;
@@ -998,7 +1006,7 @@ on_config_temp_buffer_path(h2o_configurator_command_t *cmd, h2o_configurator_con
 static h2o_nif_cfg_listen_t *
 add_listener(h2o_nif_config_t *config, int fd, struct sockaddr *addr, socklen_t addrlen, int is_global, int proxy_protocol)
 {
-    h2o_nif_cfg_listen_t *listener = enif_alloc(sizeof(*listener));
+    h2o_nif_cfg_listen_t *listener = mem_alloc(sizeof(*listener));
 
     (void)memcpy(&listener->addr, addr, addrlen);
     listener->fd = fd;
@@ -1006,13 +1014,13 @@ add_listener(h2o_nif_config_t *config, int fd, struct sockaddr *addr, socklen_t 
     if (is_global) {
         listener->hosts = NULL;
     } else {
-        listener->hosts = enif_alloc(sizeof(listener->hosts[0]));
+        listener->hosts = mem_alloc(sizeof(listener->hosts[0]));
         listener->hosts[0] = NULL;
     }
     // (void) memset(&listener->ssl, 0, sizeof(listener->ssl));
     listener->proxy_protocol = proxy_protocol;
 
-    config->listeners = enif_realloc(config->listeners, sizeof(*(config->listeners)) * (config->num_listeners + 1));
+    config->listeners = mem_realloc(config->listeners, sizeof(*(config->listeners)) * (config->num_listeners + 1));
     config->listeners[config->num_listeners++] = listener;
 
     return listener;

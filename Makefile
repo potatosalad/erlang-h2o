@@ -2,7 +2,8 @@ PROJECT = h2o
 PROJECT_DESCRIPTION = New project
 PROJECT_VERSION = 0.1.0
 
-DEPS = ranch
+DEPS = ranch cowlib
+dep_cowlib = git https://github.com/ninenines/cowlib master
 
 include erlang.mk
 

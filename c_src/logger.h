@@ -11,13 +11,18 @@
 /* Types */
 
 typedef struct h2o_nif_logger_s h2o_nif_logger_t;
-typedef struct h2o_nif_logger_ctx_s h2o_nif_logger_ctx_t;
 typedef struct h2o_nif_logger_event_s h2o_nif_logger_event_t;
 typedef struct h2o_nif_logger_handle_s h2o_nif_logger_handle_t;
 
-struct h2o_nif_logger_ctx_s {
-    h2o_logger_t super;
-    _Atomic uintptr_t logger;
+struct h2o_nif_logger_s {
+    h2o_nif_port_t super;
+    h2o_nif_logger_handle_t *handle;
+    struct {
+        ck_spinlock_t lock;
+        atomic_flag ready_input;
+        h2o_linklist_t input;
+        _Atomic size_t size;
+    } events;
 };
 
 struct h2o_nif_logger_event_s {
@@ -30,19 +35,40 @@ struct h2o_nif_logger_handle_s {
     ERL_NIF_TERM reference;
 };
 
-struct h2o_nif_logger_s {
-    h2o_nif_port_t super;
-    _Atomic uintptr_t ctx;
-    h2o_nif_logger_handle_t *lh;
-    atomic_flag state;
-    ck_spinlock_t spinlock;
-    h2o_linklist_t events;
-    _Atomic unsigned long num_events;
-};
+// typedef struct h2o_nif_logger_s h2o_nif_logger_t;
+// typedef struct h2o_nif_logger_ctx_s h2o_nif_logger_ctx_t;
+// typedef struct h2o_nif_logger_event_s h2o_nif_logger_event_t;
+// typedef struct h2o_nif_logger_handle_s h2o_nif_logger_handle_t;
+
+// struct h2o_nif_logger_ctx_s {
+//     h2o_logger_t super;
+//     _Atomic uintptr_t logger;
+// };
+
+// struct h2o_nif_logger_event_s {
+//     h2o_linklist_t _link;
+//     ErlNifBinary binary;
+// };
+
+// struct h2o_nif_logger_handle_s {
+//     h2o_logconf_t *logconf;
+//     ERL_NIF_TERM reference;
+// };
+
+// struct h2o_nif_logger_s {
+//     h2o_nif_port_t super;
+//     _Atomic uintptr_t ctx;
+//     h2o_nif_logger_handle_t *lh;
+//     atomic_flag state;
+//     ck_spinlock_t spinlock;
+//     h2o_linklist_t events;
+//     _Atomic unsigned long num_events;
+// };
 
 /* Resource Functions */
 
 static int h2o_nif_logger_get(ErlNifEnv *env, ERL_NIF_TERM port_term, h2o_nif_logger_t **loggerp);
+extern ERL_NIF_TERM h2o_nif_logger_event_make(ErlNifEnv *env, h2o_nif_logger_event_t *logger_event);
 
 inline int
 h2o_nif_logger_get(ErlNifEnv *env, ERL_NIF_TERM port_term, h2o_nif_logger_t **loggerp)
@@ -59,7 +85,6 @@ h2o_nif_logger_get(ErlNifEnv *env, ERL_NIF_TERM port_term, h2o_nif_logger_t **lo
 
 /* Logger Functions */
 
-extern h2o_nif_logger_ctx_t *h2o_nif_logger_register(ErlNifEnv *env, h2o_nif_server_t *server, h2o_pathconf_t *pathconf,
-                                                     h2o_nif_logger_handle_t *lh);
+extern int h2o_nif_logger_register(ErlNifEnv *env, h2o_nif_server_t *server, h2o_pathconf_t *pathconf, h2o_nif_logger_handle_t *lh);
 
 #endif

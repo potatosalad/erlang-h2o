@@ -18,7 +18,7 @@ h2o_nif_port_close_1(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     if (!h2o_nif_port_get(env, argv[0], &port) || h2o_nif_port_is_closed(port)) {
         return ATOM_ok;
     }
-    if (!h2o_nif_port_close(port, env, &out)) {
+    if (!h2o_nif_port_stop(port, env, &out)) {
         return out;
     }
     if (out == ATOM_trap) {
@@ -38,7 +38,7 @@ h2o_nif_port_close_trap_1(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     if (!h2o_nif_port_get(env, argv[0], &port)) {
         return ATOM_ok;
     }
-    if (!__h2o_nif_port_close(port, env, &out)) {
+    if (!h2o_nif_port_stop_continue(port, env, &out)) {
         return out;
     }
     if (out == ATOM_trap) {
@@ -63,7 +63,9 @@ h2o_nif_port_connect_2(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     if (!enif_get_local_pid(env, argv[1], &new_owner)) {
         return enif_make_badarg(env);
     }
-    (void)h2o_nif_port_set_owner(port, new_owner);
+    if (!h2o_nif_port_connect(port, env, new_owner)) {
+        return enif_make_tuple2(env, ATOM_error, ATOM_closed);
+    }
     return ATOM_true;
 }
 
@@ -88,8 +90,9 @@ h2o_nif_port_info_1(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     }
     /* num_children */
     {
-        int num_children = atomic_load_explicit(&port->num_children, memory_order_relaxed);
-        list[i++] = enif_make_tuple2(env, ATOM_num_children, enif_make_int(env, num_children));
+        (void)ck_spinlock_lock_eb(&h2o_nif_ports_spinlock);
+        list[i++] = enif_make_tuple2(env, ATOM_num_children, enif_make_ulong(env, port->num_children));
+        (void)ck_spinlock_unlock(&h2o_nif_ports_spinlock);
     }
     /* parent */
     {
@@ -135,11 +138,12 @@ h2o_nif_port_info_2(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
         }
         (void)ck_spinlock_unlock(&h2o_nif_ports_spinlock);
     } else if (argv[1] == ATOM_connected) {
-        ErlNifPid owner = atomic_load_explicit(&port->owner, memory_order_relaxed);
+        ErlNifPid owner = h2o_nif_port_get_owner(port);
         out = enif_make_pid(env, &owner);
     } else if (argv[1] == ATOM_num_children) {
-        int num_children = atomic_load_explicit(&port->num_children, memory_order_relaxed);
-        out = enif_make_int(env, num_children);
+        (void)ck_spinlock_lock_eb(&h2o_nif_ports_spinlock);
+        out = enif_make_int(env, enif_make_ulong(env, port->num_children));
+        (void)ck_spinlock_unlock(&h2o_nif_ports_spinlock);
     } else if (argv[1] == ATOM_parent) {
         (void)ck_spinlock_lock_eb(&h2o_nif_ports_spinlock);
         out = (port->parent == NULL) ? ATOM_undefined : h2o_nif_port_make(env, port->parent);

@@ -126,6 +126,7 @@ loop_passive(State=#state{data=Data}) ->
 		Request = {'$gen_call', _, _} ->
 			loop_passive(State#state{data=[Request | Data]});
 		ready_input ->
+			% io:format("batch Data=~p~n", [Data]),
 			ok = h2o_nif:batch(Data),
 			loop_notify(State#state{data=[]});
 		Info ->

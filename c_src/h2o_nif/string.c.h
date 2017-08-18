@@ -506,7 +506,7 @@ h2o_nif_string_uri_escape_2_reduce(ErlNifEnv *env, h2o_nif_slice_t *super)
     out = enif_make_binary(env, &slice->super.out.binary);
     out = enif_make_sub_binary(env, out, 0, slice->super.out.offset);
     if (slice->preserve_chars != NULL) {
-        (void)enif_free(slice->preserve_chars);
+        (void)mem_free(slice->preserve_chars);
         slice->preserve_chars = NULL;
     }
 
@@ -530,7 +530,7 @@ h2o_nif_string_uri_escape_2(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     if (argv[1] == ATOM_false || preserve_chars_bin.size == 0) {
         preserve_chars = NULL;
     } else {
-        preserve_chars = (char *)enif_alloc(preserve_chars_bin.size + 1);
+        preserve_chars = (char *)mem_alloc(preserve_chars_bin.size + 1);
         (void)memset(preserve_chars, 0, preserve_chars_bin.size + 1);
         (void)memcpy(preserve_chars, preserve_chars_bin.data, preserve_chars_bin.size);
     }
@@ -542,7 +542,7 @@ h2o_nif_string_uri_escape_2(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
         (void)memcpy(buf, outv.base, outv.len);
         (void)free(outv.base);
         if (preserve_chars != NULL) {
-            (void)enif_free(preserve_chars);
+            (void)mem_free(preserve_chars);
             preserve_chars = NULL;
         }
         return out;
@@ -558,7 +558,7 @@ h2o_nif_string_uri_escape_2(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
                                 h2o_nif_string_uri_escape_2_reduce, (h2o_nif_slice_t **)&slice)) {
         (void)enif_release_binary(&outbin);
         if (preserve_chars != NULL) {
-            (void)enif_free(preserve_chars);
+            (void)mem_free(preserve_chars);
             preserve_chars = NULL;
         }
         return enif_make_badarg(env);

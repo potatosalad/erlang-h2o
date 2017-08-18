@@ -112,5 +112,10 @@ dispatch([Event=#h2o_req{event=EventPort} | Events], State=#state{opts={Filter, 
 	{ok, FilterState} = Filter:on_setup_ostream(Event, Opts),
 	undefined = put(EventPort, {Filter, FilterState}),
 	dispatch(Events, State);
+% dispatch([Event | Events], State=#state{opts={Filter, Opts}}) ->
+% 	io:format("~s~n", [pretty_print(Event)]),
+% 	{ok, FilterState} = Filter:on_setup_ostream(Event, Opts),
+% 	undefined = put(Event, {Filter, FilterState}),
+% 	dispatch(Events, State);
 dispatch([], State) ->
 	loop(State).

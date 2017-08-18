@@ -27,6 +27,9 @@
 read(#h2o_req{event=Event, event_type=filter}) ->
 	h2o_nif:filter_event_read(Event).
 
+% read(Event) ->
+% 	h2o_nif:filter_event_read(Event).
+
 read_entity(#h2o_req{event=Event, event_type=filter}, Length) ->
 	h2o_batch:cast({?H2O_BATCH_filter_event_read_entity, {Event, self(), Length}}).
 

@@ -86,8 +86,9 @@ else ifeq ($(PLATFORM),linux)
 	CXXFLAGS ?= -O3 -finline-functions -fstack-protector -Wall
 else ifeq ($(PLATFORM),solaris)
 	CC ?= cc
-	CFLAGS ?= -O3 -std=c11 -finline-functions -fstack-protector -Wall -Wmissing-prototypes
-	CXXFLAGS ?= -O3 -finline-functions -fstack-protector -Wall
+	CFLAGS ?= -O3 -std=c11 -finline-functions -fstack-protector -Wall -Wmissing-prototypes -fPIC
+	CXXFLAGS ?= -O3 -finline-functions -fstack-protector -Wall -fPIC
+	LDLIBS ?= -latomic
 endif
 
 ifneq ($(PLATFORM),msys2)
@@ -102,7 +103,6 @@ CFLAGS += -I"$(ERTS_INCLUDE_DIR)" -I"$(ERL_INTERFACE_INCLUDE_DIR)" \
 	-I"$(KLIB_INCLUDE_DIR)" \
 	-I"$(LIBRESSL_INCLUDE_DIR)" \
 	-I"$(WSLAY_INCLUDE_DIR)" \
-	-I"$(WSLAY_LIBINCLUDE_DIR)" \
 	-I"$(YAML_INCLUDE_DIR)" \
 	-I"$(YOML_INCLUDE_DIR)"
 CXXFLAGS += -I"$(ERTS_INCLUDE_DIR)" -I"$(ERL_INTERFACE_INCLUDE_DIR)" \
@@ -112,7 +112,6 @@ CXXFLAGS += -I"$(ERTS_INCLUDE_DIR)" -I"$(ERL_INTERFACE_INCLUDE_DIR)" \
 	-I"$(KLIB_INCLUDE_DIR)" \
 	-I"$(LIBRESSL_INCLUDE_DIR)" \
 	-I"$(WSLAY_INCLUDE_DIR)" \
-	-I"$(WSLAY_LIBINCLUDE_DIR)" \
 	-I"$(YAML_INCLUDE_DIR)" \
 	-I"$(YOML_INCLUDE_DIR)"
 
@@ -153,8 +152,7 @@ WSLAY_GIT ?= git://github.com/tatsuhiro-t/wslay.git
 WSLAY_SRC_DIR ?= $(C_DEPS_DIR)/wslay
 WSLAY_BUILD_DIR ?= $(C_DEPS_DIR)/wslay-build
 WSLAY_LIB_DIR ?= $(WSLAY_BUILD_DIR)/lib
-WSLAY_LIBINCLUDE_DIR ?= $(WSLAY_LIB_DIR)/includes
-WSLAY_INCLUDE_DIR ?= $(WSLAY_SRC_DIR)/lib/includes
+WSLAY_INCLUDE_DIR ?= $(WSLAY_LIB_DIR)/includes
 WSLAY_OUTPUT_FILE ?= $(WSLAY_LIB_DIR)/libwslay.a
 WSLAY_MAKE_FILE ?= $(WSLAY_BUILD_DIR)/Makefile
 
@@ -239,6 +237,18 @@ $(CK_SRC_DIR):
 		true; \
 	fi
 
+ifeq ($(PLATFORM),solaris)
+
+$(CK_MAKE_FILE): $(CK_SRC_DIR)
+	$(verbose) if [ ! -f $(CK_MAKE_FILE) ]; then \
+		(cd $(CK_SRC_DIR) \
+			&& env --unset=PLATFORM ./configure --with-pic); \
+	else \
+		true; \
+	fi
+
+else
+
 $(CK_MAKE_FILE): $(CK_SRC_DIR)
 	$(verbose) if [ ! -f $(CK_MAKE_FILE) ]; then \
 		(cd $(CK_SRC_DIR) \
@@ -246,6 +256,8 @@ $(CK_MAKE_FILE): $(CK_SRC_DIR)
 	else \
 		true; \
 	fi
+
+endif
 
 $(CK_OUTPUT_FILE): $(CK_MAKE_FILE)
 	$(MAKE) -C $(CK_SRC_DIR)
@@ -264,6 +276,7 @@ $(H2O_MAKE_FILE): $(H2O_SRC_DIR)
 	$(verbose) if [ ! -f $(H2O_MAKE_FILE) ]; then \
 		(cd $(H2O_BUILD_DIR) \
 			&& cmake \
+			-DCMAKE_C_FLAGS="-ftls-model=global-dynamic -fPIC" \
 			-DWSLAY_LIBRARIES="$(WSLAY_LIB_DIR)" \
 			-DWSLAY_INCLUDE_DIR="$(WSLAY_INCLUDE_DIR)" \
 			-DWITH_BUNDLED_SSL_FOR_LIBH2O=on \
@@ -288,18 +301,25 @@ $(WSLAY_SRC_DIR):
 $(WSLAY_MAKE_FILE): $(WSLAY_SRC_DIR)
 	$(verbose) mkdir -p $(WSLAY_BUILD_DIR)
 	$(verbose) if [ ! -f $(WSLAY_MAKE_FILE) ]; then \
-		(cd $(WSLAY_BUILD_DIR) && cmake "$(WSLAY_SRC_DIR)"); \
+		(cd $(WSLAY_BUILD_DIR) \
+			&& cmake \
+			-DCMAKE_C_FLAGS="-ftls-model=global-dynamic -fPIC" \
+			"$(WSLAY_SRC_DIR)"); \
 	else \
 		true; \
 	fi
 
 $(WSLAY_OUTPUT_FILE): $(WSLAY_MAKE_FILE)
 	$(MAKE) -C $(WSLAY_BUILD_DIR)
+	$(verbose) cp $(WSLAY_SRC_DIR)/lib/includes/wslay/wslay.h $(WSLAY_INCLUDE_DIR)/wslay/wslay.h
 
 $(YAML_MAKE_FILE): $(H2O_SRC_DIR)
 	$(verbose) mkdir -p $(YAML_BUILD_DIR)
 	$(verbose) if [ ! -f $(YAML_MAKE_FILE) ]; then \
-		(cd $(YAML_BUILD_DIR) && cmake "$(YAML_SRC_DIR)"); \
+		(cd $(YAML_BUILD_DIR) \
+			&& cmake \
+			-DCMAKE_C_FLAGS="-ftls-model=global-dynamic -fPIC" \
+			"$(YAML_SRC_DIR)"); \
 	else \
 		true; \
 	fi
@@ -350,6 +370,6 @@ distclean-deps:
 	$(gen_verbose) rm -rf $(C_DEPS_DIR)
 
 clang-format-all:
-	$(gen_verbose) clang-format -i *.c *.h batch/*.c.h h2o_nif/*.c.h
+	$(gen_verbose) clang-format -i *.c *.h batch/*.c.h h2o_nif/*.c.h terms/*.c.h
 
 -include $(C_SRC_ENV)

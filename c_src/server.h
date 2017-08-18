@@ -83,5 +83,12 @@ extern int h2o_nif_server_open(h2o_nif_server_t **serverp);
 /* Server Functions */
 
 extern int h2o_nif_server_start(h2o_nif_server_t *server);
+static h2o_nif_ipc_queue_t *h2o_nif_thread_ipc_queue_get(h2o_req_t *req);
+
+inline h2o_nif_ipc_queue_t *
+h2o_nif_thread_ipc_queue_get(h2o_req_t *req)
+{
+    return ((h2o_nif_srv_thread_ctx_t *)req->conn->ctx)->thread->ipc_queue;
+}
 
 #endif

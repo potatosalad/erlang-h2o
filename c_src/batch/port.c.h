@@ -3,7 +3,7 @@
 
 #include "../port.h"
 
-/* port_connect/2 */
+/* cast: port_connect/2 */
 
 static int port_connect_2_test(h2o_nif_batch_ctx_t *ctx, ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]);
 static int port_connect_2_exec(h2o_nif_batch_ctx_t *ctx, ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]);
@@ -23,15 +23,15 @@ port_connect_2_test(h2o_nif_batch_ctx_t *ctx, ErlNifEnv *env, int argc, const ER
 }
 
 static int
-port_connect_2_exec(h2o_nif_batch_ctx_t *ctx, ErlNifEnv *_env, int argc, const ERL_NIF_TERM argv[])
+port_connect_2_exec(h2o_nif_batch_ctx_t *ctx, ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
     TRACE_F("port_connect_2_exec:%s:%d\n", __FILE__, __LINE__);
     h2o_nif_port_t *port = NULL;
     ErlNifPid new_owner;
-    ErlNifEnv *env = ctx->batch->env;
-    if (argc != 2 || !h2o_nif_port_get(env, argv[0], &port) || !enif_get_local_pid(env, argv[1], &new_owner)) {
+    ErlNifEnv *batch_env = ctx->batch->env;
+    if (argc != 2 || !h2o_nif_port_get(batch_env, argv[0], &port) || !enif_get_local_pid(batch_env, argv[1], &new_owner)) {
         return 0;
     }
-    (void)h2o_nif_port_connect(port, _env, new_owner);
+    (void)h2o_nif_port_connect(port, env, new_owner);
     return 1;
 }
