@@ -17,8 +17,10 @@ static ERL_NIF_TERM h2o_nif_slice_reduce_binary(ErlNifEnv *env, h2o_nif_slice_t 
 int
 h2o_nif_slice_load(ErlNifEnv *env, h2o_nif_data_t *nif_data)
 {
-    h2o_nif_slice_resource_type = enif_open_resource_type(env, NULL, "h2o_nif_slice", h2o_nif_slice_dtor, ERL_NIF_RT_CREATE | ERL_NIF_RT_TAKEOVER, NULL);
-    h2o_nif_trap_resource_type = enif_open_resource_type(env, NULL, "h2o_nif_trap", NULL, ERL_NIF_RT_CREATE | ERL_NIF_RT_TAKEOVER, NULL);
+    h2o_nif_slice_resource_type =
+        enif_open_resource_type(env, NULL, "h2o_nif_slice", h2o_nif_slice_dtor, ERL_NIF_RT_CREATE | ERL_NIF_RT_TAKEOVER, NULL);
+    h2o_nif_trap_resource_type =
+        enif_open_resource_type(env, NULL, "h2o_nif_trap", NULL, ERL_NIF_RT_CREATE | ERL_NIF_RT_TAKEOVER, NULL);
     return 0;
 }
 
@@ -37,7 +39,8 @@ h2o_nif_slice_unload(ErlNifEnv *env, h2o_nif_data_t *nif_data)
 /* Functions */
 
 int
-__h2o_nif_slice_create(size_t size, const char *fun_name, h2o_nif_slice_map_t *map, h2o_nif_slice_reduce_t *reduce, h2o_nif_slice_t **slicep)
+__h2o_nif_slice_create(size_t size, const char *fun_name, h2o_nif_slice_map_t *map, h2o_nif_slice_reduce_t *reduce,
+                       h2o_nif_slice_t **slicep)
 {
     assert(slicep != NULL);
     h2o_nif_slice_t *slice = h2o_nif_slice_alloc(size);

@@ -86,6 +86,7 @@ h2o_nif_handler_event_get(ErlNifEnv *env, ERL_NIF_TERM port_term, h2o_nif_handle
 
 /* Handler Functions */
 
-extern h2o_nif_handler_ctx_t *h2o_nif_handler_register(ErlNifEnv *env, h2o_nif_server_t *server, h2o_pathconf_t *pathconf, h2o_nif_handler_handle_t *hh);
+extern h2o_nif_handler_ctx_t *h2o_nif_handler_register(ErlNifEnv *env, h2o_nif_server_t *server, h2o_pathconf_t *pathconf,
+                                                       h2o_nif_handler_handle_t *hh);
 
 #endif

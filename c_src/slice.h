@@ -44,13 +44,15 @@ extern void h2o_nif_slice_unload(ErlNifEnv *env, h2o_nif_data_t *nif_data);
 
 /* Functions */
 
-extern int __h2o_nif_slice_create(size_t size, const char *fun_name, h2o_nif_slice_map_t *map, h2o_nif_slice_reduce_t *reduce, h2o_nif_slice_t **slicep);
+extern int __h2o_nif_slice_create(size_t size, const char *fun_name, h2o_nif_slice_map_t *map, h2o_nif_slice_reduce_t *reduce,
+                                  h2o_nif_slice_t **slicep);
 extern void h2o_nif_slice_dtor(ErlNifEnv *env, void *obj);
 extern ERL_NIF_TERM h2o_nif_slice_schedule(ErlNifEnv *env, h2o_nif_slice_t *slice);
 
 /* Inline Definitions */
 
-static int h2o_nif_slice_create(const char *fun_name, h2o_nif_slice_map_t *map, h2o_nif_slice_reduce_t *reduce, h2o_nif_slice_t **slicep);
+static int h2o_nif_slice_create(const char *fun_name, h2o_nif_slice_map_t *map, h2o_nif_slice_reduce_t *reduce,
+                                h2o_nif_slice_t **slicep);
 static void h2o_nif_slice_release(h2o_nif_slice_t *slice);
 
 inline int

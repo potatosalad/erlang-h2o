@@ -132,7 +132,7 @@ h2o_nif_server_start(h2o_nif_server_t *server)
 #ifdef __APPLE__
                 || (limit.rlim_cur = OPEN_MAX, setrlimit(RLIMIT_NOFILE, &limit)) == 0
 #endif
-                ) {
+            ) {
                 TRACE_F("[INFO] raised RLIMIT_NOFILE to %d\n", (int)limit.rlim_cur);
             }
         }

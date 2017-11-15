@@ -122,7 +122,8 @@ h2o_nif_string_lcstris_2_map(ErlNifEnv *env, h2o_nif_slice_t *slice, size_t offs
     if (result == 0) {
         return slice->in.length;
     }
-    result = h2o_lcstris((const char *)slice->in.binary.data, slice->in.binary.size, (const char *)slice->out.binary.data, slice->out.binary.size);
+    result = h2o_lcstris((const char *)slice->in.binary.data, slice->in.binary.size, (const char *)slice->out.binary.data,
+                         slice->out.binary.size);
     if (result) {
         return (offset + length);
     } else {
@@ -272,7 +273,8 @@ h2o_nif_string_base64_encode_2_map(ErlNifEnv *env, h2o_nif_slice_t *slice, size_
     }
 
     outlen = h2o_base64_encode_capacity(length);
-    enclen = h2o_base64_encode((char *)(slice->out.binary.data + o_pos), (const char *)(slice->in.binary.data + i_pos), length, url_encoded);
+    enclen = h2o_base64_encode((char *)(slice->out.binary.data + o_pos), (const char *)(slice->in.binary.data + i_pos), length,
+                               url_encoded);
 
     slice->out.offset += (outlen && !url_encoded) ? outlen - 1 : enclen;
 
@@ -321,7 +323,8 @@ h2o_nif_string_base64_encode_2(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv
         return enif_make_badarg(env);
     }
     h2o_nif_slice_t *slice = NULL;
-    if (!h2o_nif_slice_create("string_base64_encode", h2o_nif_string_base64_encode_2_map, h2o_nif_string_base64_encode_2_reduce, &slice)) {
+    if (!h2o_nif_slice_create("string_base64_encode", h2o_nif_string_base64_encode_2_map, h2o_nif_string_base64_encode_2_reduce,
+                              &slice)) {
         (void)enif_release_binary(&outbin);
         return enif_make_badarg(env);
     }
@@ -483,7 +486,8 @@ h2o_nif_string_uri_escape_2_map(ErlNifEnv *env, h2o_nif_slice_t *super, size_t o
     size_t i_pos = offset;
     size_t o_pos = slice->super.out.offset;
 
-    h2o_iovec_t outv = h2o_uri_escape(&slice->super.pool, (const char *)(slice->super.in.binary.data + i_pos), length, slice->preserve_chars);
+    h2o_iovec_t outv =
+        h2o_uri_escape(&slice->super.pool, (const char *)(slice->super.in.binary.data + i_pos), length, slice->preserve_chars);
     (void)memcpy(slice->super.out.binary.data + o_pos, outv.base, outv.len);
 
     slice->super.out.offset += outv.len;
@@ -550,7 +554,8 @@ h2o_nif_string_uri_escape_2(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
         return enif_make_badarg(env);
     }
     h2o_nif_string_uri_escape_2_t *slice = NULL;
-    if (!__h2o_nif_slice_create(sizeof(h2o_nif_string_uri_escape_2_t), "string_uri_escape", h2o_nif_string_uri_escape_2_map, h2o_nif_string_uri_escape_2_reduce, (h2o_nif_slice_t **)&slice)) {
+    if (!__h2o_nif_slice_create(sizeof(h2o_nif_string_uri_escape_2_t), "string_uri_escape", h2o_nif_string_uri_escape_2_map,
+                                h2o_nif_string_uri_escape_2_reduce, (h2o_nif_slice_t **)&slice)) {
         (void)enif_release_binary(&outbin);
         if (preserve_chars != NULL) {
             (void)enif_free(preserve_chars);

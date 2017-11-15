@@ -168,25 +168,33 @@ h2o_nif_config_init(h2o_nif_config_t *config)
     (void)h2o_file_register_configurator(&config->globalconf);
     (void)h2o_status_register_configurator(&config->globalconf);
     {
-        h2o_nif_filter_configurator_t *c = (h2o_nif_filter_configurator_t *)h2o_configurator_create(&config->globalconf, sizeof(*c));
+        h2o_nif_filter_configurator_t *c =
+            (h2o_nif_filter_configurator_t *)h2o_configurator_create(&config->globalconf, sizeof(*c));
         c->super.enter = on_config_erlang_filter_enter;
         c->super.exit = on_config_erlang_filter_exit;
         c->handles = c->_handles_stack;
-        (void)h2o_configurator_define_command(&c->super, "erlang.filter", H2O_CONFIGURATOR_FLAG_ALL_LEVELS, on_config_erlang_filter);
+        (void)h2o_configurator_define_command(&c->super, "erlang.filter", H2O_CONFIGURATOR_FLAG_ALL_LEVELS,
+                                              on_config_erlang_filter);
     }
     {
-        h2o_nif_handler_configurator_t *c = (h2o_nif_handler_configurator_t *)h2o_configurator_create(&config->globalconf, sizeof(*c));
+        h2o_nif_handler_configurator_t *c =
+            (h2o_nif_handler_configurator_t *)h2o_configurator_create(&config->globalconf, sizeof(*c));
         c->super.enter = on_config_erlang_handler_enter;
         c->super.exit = on_config_erlang_handler_exit;
         c->handles = c->_handles_stack;
-        (void)h2o_configurator_define_command(&c->super, "erlang.handler", H2O_CONFIGURATOR_FLAG_PATH | H2O_CONFIGURATOR_FLAG_DEFERRED | H2O_CONFIGURATOR_FLAG_EXPECT_SCALAR, on_config_erlang_handler);
+        (void)h2o_configurator_define_command(&c->super, "erlang.handler",
+                                              H2O_CONFIGURATOR_FLAG_PATH | H2O_CONFIGURATOR_FLAG_DEFERRED |
+                                                  H2O_CONFIGURATOR_FLAG_EXPECT_SCALAR,
+                                              on_config_erlang_handler);
     }
     {
-        h2o_nif_logger_configurator_t *c = (h2o_nif_logger_configurator_t *)h2o_configurator_create(&config->globalconf, sizeof(*c));
+        h2o_nif_logger_configurator_t *c =
+            (h2o_nif_logger_configurator_t *)h2o_configurator_create(&config->globalconf, sizeof(*c));
         c->super.enter = on_config_erlang_logger_enter;
         c->super.exit = on_config_erlang_logger_exit;
         c->handles = c->_handles_stack;
-        (void)h2o_configurator_define_command(&c->super, "erlang.logger", H2O_CONFIGURATOR_FLAG_ALL_LEVELS, on_config_erlang_logger);
+        (void)h2o_configurator_define_command(&c->super, "erlang.logger", H2O_CONFIGURATOR_FLAG_ALL_LEVELS,
+                                              on_config_erlang_logger);
     }
     // (void)h2o_config_register_simple_status_handler(&config->globalconf, (h2o_iovec_t){H2O_STRLIT("main")},
     //                                                 h2o_nif_server_on_extra_status);
@@ -347,7 +355,8 @@ on_config_erlang_filter(h2o_configurator_command_t *cmd, h2o_configurator_contex
         (void)h2o_configurator_errprintf(cmd, node, "`erlang.filter` has invalid Base64URL encoding");
         return -1;
     }
-    if (!enif_binary_to_term(config->env, (const unsigned char *)reference_iov.base, reference_iov.len, &reference_term, ERL_NIF_BIN2TERM_SAFE)) {
+    if (!enif_binary_to_term(config->env, (const unsigned char *)reference_iov.base, reference_iov.len, &reference_term,
+                             ERL_NIF_BIN2TERM_SAFE)) {
         (void)h2o_configurator_errprintf(cmd, node, "`erlang.filter` must be an erlang reference");
         (void)free(reference_iov.base);
         return -1;
@@ -448,7 +457,8 @@ on_config_erlang_handler(h2o_configurator_command_t *cmd, h2o_configurator_conte
         (void)h2o_configurator_errprintf(cmd, node, "`erlang.handler` has invalid Base64URL encoding");
         return -1;
     }
-    if (!enif_binary_to_term(config->env, (const unsigned char *)reference_iov.base, reference_iov.len, &reference_term, ERL_NIF_BIN2TERM_SAFE)) {
+    if (!enif_binary_to_term(config->env, (const unsigned char *)reference_iov.base, reference_iov.len, &reference_term,
+                             ERL_NIF_BIN2TERM_SAFE)) {
         (void)h2o_configurator_errprintf(cmd, node, "`erlang.handler` must be an erlang reference");
         (void)free(reference_iov.base);
         return -1;
@@ -562,7 +572,8 @@ on_config_erlang_logger(h2o_configurator_command_t *cmd, h2o_configurator_contex
         (void)h2o_configurator_errprintf(cmd, t, "`reference` has invalid Base64URL encoding");
         return -1;
     }
-    if (!enif_binary_to_term(config->env, (const unsigned char *)reference_iov.base, reference_iov.len, &reference_term, ERL_NIF_BIN2TERM_SAFE)) {
+    if (!enif_binary_to_term(config->env, (const unsigned char *)reference_iov.base, reference_iov.len, &reference_term,
+                             ERL_NIF_BIN2TERM_SAFE)) {
         (void)h2o_configurator_errprintf(cmd, t, "`reference` must be an erlang reference");
         (void)free(reference_iov.base);
         return -1;
